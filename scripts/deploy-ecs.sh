@@ -8,6 +8,8 @@ COMPOSE_HTTPS="$DOCKER_DIR/docker-compose.ecs.https.yml"
 CERT_DIR="/etc/letsencrypt/live/www.hellovibecoding.cn"
 CERT_FULLCHAIN="$CERT_DIR/fullchain.pem"
 CERT_PRIVKEY="$CERT_DIR/privkey.pem"
+PRISMA_BIN="apps/api/node_modules/.bin/prisma"
+TSX_BIN="apps/api/node_modules/.bin/tsx"
 
 cd "$ROOT_DIR"
 
@@ -38,11 +40,11 @@ for i in {1..40}; do
   sleep 2
 done
 
-echo "Running Prisma migrate in container..."
-docker exec hvc-api sh -lc 'pnpm -C apps/api prisma:migrate'
+echo "Running Prisma schema sync in container..."
+docker exec hvc-api sh -lc "$PRISMA_BIN db push --schema apps/api/src/prisma/schema.prisma"
 
 echo "Seeding v2 content in container..."
-docker exec hvc-api sh -lc 'pnpm -C apps/api prisma:seed'
+docker exec hvc-api sh -lc "$TSX_BIN apps/api/src/prisma/seed.ts"
 
 echo "Deployment assets are ready."
-echo "Check health with: curl http://127.0.0.1/api/v1/health"
+echo "Check API health in container with: docker exec hvc-api wget -qO- http://127.0.0.1:3001/api/v1/health"

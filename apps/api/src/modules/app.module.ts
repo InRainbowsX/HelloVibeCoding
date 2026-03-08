@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AdminModule } from './admin/admin.module';
 import { AppsModule } from './apps/apps.module';
+import { AuthModule } from './auth/auth.module';
 import { DigestModule } from './digest/digest.module';
 import { DiscussionsModule } from './discussions/discussions.module';
 import { HealthModule } from './health/health.module';
@@ -21,6 +22,7 @@ import { SubmissionsModule } from './submissions/submissions.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     HealthModule,
+    AuthModule,
     IdeasModule,
     AppsModule,
     ProjectsModule,

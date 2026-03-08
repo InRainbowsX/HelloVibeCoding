@@ -395,6 +395,88 @@ export function clearSimulatedComments() {
   });
 }
 
+// ==================== Idea Blocks ====================
+
+export interface IdeaBlockContent {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string;
+  blockType: 'FORMULA' | 'FEATURE' | 'WORKFLOW' | 'CHANNEL';
+  tags: string[];
+  noveltyNote?: string | null;
+  sourceCount?: number;
+  incubationCount?: number;
+  sources?: Array<{
+    id: string;
+    app: { id: string; name: string; slug: string };
+  }>;
+}
+
+export function listAdminIdeaBlocks() {
+  return adminRequest<{ items: IdeaBlockContent[]; total: number }>('/admin/idea-blocks');
+}
+
+export function createIdeaBlock(data: Partial<IdeaBlockContent>) {
+  return adminRequest<IdeaBlockContent>('/admin/idea-blocks', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateIdeaBlock(id: string, data: Partial<IdeaBlockContent>) {
+  return adminRequest<IdeaBlockContent>(`/admin/idea-blocks/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteIdeaBlock(id: string) {
+  return adminRequest<{ success: boolean }>(`/admin/idea-blocks/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+// ==================== Incubations ====================
+
+export interface IncubationContent {
+  id: string;
+  slug: string;
+  title: string;
+  oneLiner: string;
+  status: 'OPEN' | 'VALIDATING' | 'BUILDING' | 'ARCHIVED';
+  tags?: string[];
+  blockCount?: number;
+  sourceProjectCount?: number;
+  discussionCount?: number;
+  roomCount?: number;
+  blocks?: Array<{
+    id: string;
+    ideaBlock: { id: string; title: string; slug: string };
+  }>;
+  sourceProjects?: Array<{
+    id: string;
+    app: { id: string; name: string; slug: string };
+  }>;
+}
+
+export function listAdminIncubations() {
+  return adminRequest<{ items: IncubationContent[]; total: number }>('/admin/incubations');
+}
+
+export function updateIncubation(id: string, data: Partial<IncubationContent>) {
+  return adminRequest<IncubationContent>(`/admin/incubations/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteIncubation(id: string) {
+  return adminRequest<{ success: boolean }>(`/admin/incubations/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 // ==================== Audit Logs ====================
 
 export function getAuditLogs(page?: number, pageSize?: number) {

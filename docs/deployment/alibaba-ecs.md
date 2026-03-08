@@ -1,162 +1,210 @@
 # 阿里云 ECS 部署指南
 
-适用于当前单机部署方案：
+当前线上目标：
 
-- 前端：Vite 构建后的静态资源
-- 后端：NestJS API
-- 数据库：PostgreSQL（Docker 容器）
-- 反向代理：Nginx
+- 域名：[https://www.hellovibecoding.cn](https://www.hellovibecoding.cn)
+- 部署方式：单台 ECS + Docker Compose
+- 运行结构：
+  - `hvc-nginx`：前端静态资源 + HTTPS + 反向代理
+  - `hvc-api`：NestJS API
+  - `hvc-db`：PostgreSQL
 
-## 1. ECS 基础准备
+这份文档按当前已经验证可用的方式整理，只描述真实可执行路径。
+
+## 1. 服务器准备
 
 建议配置：
 
-- 系统：Alibaba Cloud Linux 3 / Ubuntu 22.04
-- CPU / 内存：`2C4G` 起步
+- 系统：Ubuntu 24.04 / Ubuntu 22.04
+- 规格：`2C4G` 起步
 - 磁盘：`40GB` 起步
 
-安全组至少放行：
+安全组放行：
 
-- `22`：SSH
-- `80`：HTTP
-- `443`：HTTPS
+- `22`
+- `80`
+- `443`
 
-如果临时直连 API 调试，可短期开：
+生产环境不需要放行：
 
 - `3001`
+- `5432`
 
-生产环境不建议长期暴露 `3001`，应只通过 Nginx 反代访问。
+数据库通过 Docker 内网给 API 用，本地工具通过 SSH 隧道访问。
 
-## 2. 安装运行时
+## 2. 安装 Docker
 
 ```bash
 sudo apt update
-sudo apt install -y docker.io docker-compose-plugin git curl
+sudo apt install -y docker.io docker-compose-plugin curl git
 sudo systemctl enable docker
 sudo systemctl start docker
-```
-
-验证：
-
-```bash
 docker --version
 docker compose version
 ```
 
-## 3. 拉取代码并准备目录
+## 3. 项目目录
+
+线上目录约定：
 
 ```bash
-sudo mkdir -p /opt/hellovibecoding
-sudo chown -R $USER:$USER /opt/hellovibecoding
-cd /opt/hellovibecoding
-git clone <your-repo-url> .
+/opt/hellovibecoding
 ```
 
-## 4. 配置环境变量
+常用子目录：
 
-在 ECS 上使用专用环境文件：
+- `docker/`
+- `uploads/`
+- 临时同步目录：`/opt/hellovibecoding.tmp-sync`
+
+初始化示例：
+
+```bash
+sudo mkdir -p /opt/hellovibecoding /opt/hellovibecoding.tmp-sync
+sudo chown -R $USER:$USER /opt/hellovibecoding /opt/hellovibecoding.tmp-sync
+```
+
+## 4. 环境变量
+
+线上环境文件：
 
 ```bash
 cp docker/.env.ecs.example docker/.env.ecs
 ```
 
-至少确认以下变量：
+当前可用模板：
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@db:5432/hellovibecoding
 PORT=3001
 NODE_ENV=production
-VITE_API_BASE_URL=/api/v1
+VITE_API_BASE_URL=https://www.hellovibecoding.cn/api/v1
 ADMIN_TOKEN=change-this-admin-token
 ```
 
-## 5. 安装依赖并构建
+关键点：
+
+- `DATABASE_URL` 必须指向 `db:5432`
+- 不要把本地 `.env` 打进 Docker 镜像
+- 前端线上 API 基地址使用正式域名
+
+## 5. Docker Compose 文件
+
+当前使用这两个文件：
+
+- HTTP：[docker/docker-compose.ecs.yml](/Users/qitmac001629/Documents/p/HelloVibeCoding/docker/docker-compose.ecs.yml)
+- HTTPS：[docker/docker-compose.ecs.https.yml](/Users/qitmac001629/Documents/p/HelloVibeCoding/docker/docker-compose.ecs.https.yml)
+
+当前 HTTPS 版的关键行为：
+
+- `db` 只绑定 `127.0.0.1:5432:5432`
+- `api` 使用 `hvc-api:deploy`
+- `nginx` 使用 `hvc-nginx:deploy`
+- `80/443` 由 `nginx` 对外暴露
+
+这意味着：
+
+- ECS 自己能访问数据库本机端口
+- 外网不能直接扫到 PostgreSQL
+- DBeaver 可以通过 SSH Tunnel 访问
+
+## 6. 纯 Docker 发布
+
+当前推荐方式不是在 ECS 宿主机安装 Node / pnpm 后构建，而是：
+
+1. 本地构建发布镜像
+2. 导出镜像包
+3. 上传到 ECS
+4. 在 ECS 上 `docker load`
+5. `docker compose up -d --no-build`
+
+### 本地构建 amd64 镜像
+
+前端：
 
 ```bash
-corepack enable
-corepack pnpm install
-corepack pnpm -C apps/web build
+docker buildx build \
+  --platform linux/amd64 \
+  -t hvc-nginx:deploy \
+  -f docker/nginx.Dockerfile \
+  --load .
 ```
 
-## 6. 启动数据库、API 与 Nginx
+后端：
 
 ```bash
-docker compose -f docker/docker-compose.ecs.yml up -d --build
+docker buildx build \
+  --platform linux/amd64 \
+  -t hvc-api:deploy \
+  -f apps/api/Dockerfile.mirror \
+  --load .
 ```
 
-确认数据库就绪：
+### 本地导出镜像
 
 ```bash
-docker compose -f docker/docker-compose.ecs.yml ps
-docker exec -it hvc-db pg_isready -U postgres
+docker save hvc-api:deploy hvc-nginx:deploy | gzip > /tmp/hvc-deploy-images-amd64.tar.gz
 ```
 
-## 7. 执行数据库迁移与种子
-
-首次部署：
+### 上传到 ECS
 
 ```bash
-set -a
-source docker/.env.ecs
-set +a
-corepack pnpm -C apps/api prisma:migrate
-corepack pnpm -C apps/api prisma:seed
+scp /tmp/hvc-deploy-images-amd64.tar.gz root@<ECS_IP>:/opt/hellovibecoding.tmp-sync/
+scp docker/docker-compose.ecs.yml docker/docker-compose.ecs.https.yml root@<ECS_IP>:/opt/hellovibecoding.tmp-sync/
 ```
 
-后续更新：
+### ECS 上加载并启动
 
 ```bash
-set -a
-source docker/.env.ecs
-set +a
-corepack pnpm -C apps/api prisma:migrate
+cd /opt/hellovibecoding
+cp /opt/hellovibecoding.tmp-sync/docker-compose.ecs.yml docker/docker-compose.ecs.yml
+cp /opt/hellovibecoding.tmp-sync/docker-compose.ecs.https.yml docker/docker-compose.ecs.https.yml
+
+cd docker
+docker compose -f docker-compose.ecs.https.yml down
+zcat /opt/hellovibecoding.tmp-sync/hvc-deploy-images-amd64.tar.gz | docker load
+docker compose -f docker-compose.ecs.https.yml up -d --no-build
+docker compose -f docker-compose.ecs.https.yml ps
 ```
 
-## 8. 一键部署脚本（推荐）
-
-仓库已提供：
-
-- [scripts/deploy-ecs.sh](/Users/qitmac001629/Documents/p/HelloVibeCoding/scripts/deploy-ecs.sh)
-
-执行前先确认：
-
-- `docker/.env.ecs` 已填写
-- 域名已解析到 ECS
-
-执行：
+### 验证镜像架构
 
 ```bash
-bash scripts/deploy-ecs.sh
+docker image inspect hvc-api:deploy --format '{{.Architecture}} {{.Os}}'
+docker image inspect hvc-nginx:deploy --format '{{.Architecture}} {{.Os}}'
 ```
 
-## 9. Nginx 反向代理
-
-目标流量分配：
-
-- `/` -> 前端静态资源
-- `/api/` -> `http://api:3001/api/`
-- `/uploads/` -> `http://api:3001/uploads/`
-
-ECS 专用 Nginx 配置文件：
-
-- [docker/nginx.ecs.conf](/Users/qitmac001629/Documents/p/HelloVibeCoding/docker/nginx.ecs.conf)
-
-这一步很关键：如果没有 `/uploads/` 反代，后台上传的截图在生产域名下会直接 404。
-
-## 10. 域名与 HTTPS
-
-当前线上推荐做法（适配容器 Nginx）：
+期望结果：
 
 ```bash
-sudo apt install -y certbot
+amd64 linux
 ```
 
-1. 先确认域名解析：
+## 7. 数据库同步与 Seed
 
-- `hellovibecoding.cn -> ECS 公网 IP`
-- `www.hellovibecoding.cn -> ECS 公网 IP`
+容器内不要依赖 `pnpm`，直接调用已安装的二进制：
 
-2. 暂停容器 Nginx，使用 standalone 模式签发：
+```bash
+docker exec hvc-api sh -lc 'apps/api/node_modules/.bin/prisma db push --schema apps/api/src/prisma/schema.prisma'
+docker exec hvc-api sh -lc 'apps/api/node_modules/.bin/tsx apps/api/src/prisma/seed.ts'
+```
+
+当前线上已经验证这套方式可用。
+
+## 8. HTTPS 与域名
+
+域名策略：
+
+- `hellovibecoding.cn` 重定向到 `www`
+- 主站使用 `https://www.hellovibecoding.cn`
+
+证书目录约定：
+
+```bash
+/etc/letsencrypt/live/www.hellovibecoding.cn
+```
+
+签发示例：
 
 ```bash
 docker stop hvc-nginx
@@ -170,91 +218,131 @@ sudo certbot certonly --standalone \
   -d hellovibecoding.cn
 ```
 
-3. 在 `docker/docker-compose.ecs.yml` 中挂载证书目录：
+Nginx 配置文件：
 
-```yaml
-volumes:
-  - /etc/letsencrypt:/etc/letsencrypt:ro
-ports:
-  - "80:80"
-  - "443:443"
+- [docker/nginx.ecs.conf](/Users/qitmac001629/Documents/p/HelloVibeCoding/docker/nginx.ecs.conf)
+
+## 9. 一键脚本
+
+仓库里有部署脚本：
+
+- [scripts/deploy-ecs.sh](/Users/qitmac001629/Documents/p/HelloVibeCoding/scripts/deploy-ecs.sh)
+
+它当前做的事情：
+
+- 选择 HTTP / HTTPS compose
+- 启动容器
+- 等待 API 容器
+- 在容器里执行 `db push`
+- 在容器里执行 seed
+
+注意：
+
+- 这个脚本适合在 ECS 宿主机本地执行
+- 如果你走的是“本地 build -> 上传镜像 -> ECS load”模式，仍然建议用上面的手动命令
+
+## 10. DBeaver 连接远程数据库
+
+推荐方式：`SSH Tunnel`
+
+原因：
+
+- PostgreSQL 没有暴露公网
+- 只绑定在 ECS 本机 `127.0.0.1:5432`
+- 这样风险更低
+
+### DBeaver 连接参数
+
+`Main`：
+
+- Host：`127.0.0.1`
+- Port：`5432`
+- Database：`hellovibecoding`
+- Username：`postgres`
+- Password：`postgres`
+
+`SSH`：
+
+- Use SSH Tunnel：开启
+- Host/IP：你的 ECS 公网 IP
+- Port：`22`
+- User：`root`
+- Authentication：`Password` 或私钥
+
+连接路径是：
+
+```text
+本地 DBeaver -> SSH 到 ECS -> ECS 本机 127.0.0.1:5432 -> PostgreSQL 容器
 ```
 
-4. 在 `docker/nginx.ecs.conf` 中增加：
+## 11. 健康检查
 
-- `80 -> https://www.hellovibecoding.cn`
-- `443 ssl`
-- `hellovibecoding.cn -> https://www.hellovibecoding.cn`
-
-5. 重启 Nginx：
+推荐检查：
 
 ```bash
-docker compose -f docker/docker-compose.ecs.yml up -d nginx
+docker compose -f docker/docker-compose.ecs.https.yml ps
+docker exec hvc-api wget -qO- http://127.0.0.1:3001/api/v1/health
+curl -s https://www.hellovibecoding.cn/api/v1/health
+curl -I -s https://www.hellovibecoding.cn | head
 ```
 
-## 11. 自动续签
+## 12. 常见故障
 
-如果证书使用 `standalone` 模式签发，续签时要临时释放 `80` 端口。
+### 1. API 容器一直重启
 
-在 `/etc/letsencrypt/renewal/www.hellovibecoding.cn.conf` 里加入：
-
-```ini
-pre_hook = sh -c "docker stop hvc-nginx >/dev/null 2>&1 || true"
-post_hook = sh -c "cd /opt/hellovibecoding && docker compose -f docker/docker-compose.ecs.yml up -d nginx >/dev/null 2>&1"
-```
-
-验证：
+先看日志：
 
 ```bash
-sudo certbot renew --dry-run
+docker logs --tail=200 hvc-api
 ```
 
-## 12. Admin 访问
+这次实际遇到过两个问题：
 
-当前版本 `admin` 有最小 token 鉴权。
+- 镜像架构错误：本地 arm64 镜像被部署到 amd64 ECS
+- Docker 上下文混入本地 `.env`，导致 `DATABASE_URL` 错误地指向 `localhost:5432`
 
-1. 先在 `docker/.env.ecs` 中设置：
+修复方式：
 
-```env
-ADMIN_TOKEN=change-this-admin-token
-```
+- 强制构建 `linux/amd64`
+- 用 `.dockerignore` 排除 `.env` 和 `**/.env`
 
-2. 重建 API：
+### 2. Nginx 重启并提示 `host not found in upstream "api"`
+
+原因通常不是 Nginx 配置本身，而是：
+
+- `api` 容器还没正常起来
+
+处理方式：
+
+1. 先修好 `hvc-api`
+2. 再看 `docker compose ps`
+3. 必要时重启 nginx：
 
 ```bash
-docker compose -f docker/docker-compose.ecs.yml up -d --build api
+docker compose -f docker-compose.ecs.https.yml up -d --no-build nginx
 ```
 
-3. 打开后台：
+### 3. 容器里找不到 `pnpm`
 
-- `https://www.hellovibecoding.cn/admin`
+当前运行镜像不依赖 `pnpm`，直接用：
 
-4. 在页面顶部输入 `Admin Token` 后保存，才可读写后台数据。
+- `apps/api/node_modules/.bin/prisma`
+- `apps/api/node_modules/.bin/tsx`
 
-## 13. 上线后检查
+### 4. DBeaver 连不上
 
-验证接口：
+优先检查：
 
-```bash
-curl http://127.0.0.1/api/v1/health
-curl https://www.hellovibecoding.cn/api/v1/health
-```
+1. `hvc-db` 是否运行
+2. ECS 上是否有 `127.0.0.1:5432->5432/tcp`
+3. DBeaver 是否开启了 SSH Tunnel
 
-验证页面：
+## 13. 当前线上基线
 
-- 打开首页
-- 打开产品详情
-- 打开讨论区
-- 提交一条讨论
+当前已验证：
 
-## 14. 当前方案的已知限制
+- 站点可访问：[https://www.hellovibecoding.cn](https://www.hellovibecoding.cn)
+- API 健康检查可访问：[https://www.hellovibecoding.cn/api/v1/health](https://www.hellovibecoding.cn/api/v1/health)
+- PostgreSQL 可通过 SSH 隧道接入
 
-- PostgreSQL 仍在单机容器内，适合 MVP，不适合高可靠生产
-- `admin` 只是最小 token 鉴权，不是正式登录体系
-- 还没有日志采集、监控、自动备份
-
-如果要更稳：
-
-- PostgreSQL 迁移到阿里云 RDS
-- 再决定是否改成 `systemd` 常驻（当前版本已可直接容器化）
-- 再补监控、备份、SSL 续签
+这份文档后续只按真实线上做法更新，不保留已经失效的旧流程。

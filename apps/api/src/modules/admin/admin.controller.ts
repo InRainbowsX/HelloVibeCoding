@@ -151,6 +151,52 @@ export class AdminController {
     return this.adminService.deleteApp(id);
   }
 
+  // ==================== Idea Blocks ====================
+
+  @Get('idea-blocks')
+  @ApiOkResponse({ description: 'List idea blocks for admin CRUD.' })
+  listIdeaBlocks() {
+    return this.adminService.listIdeaBlocks();
+  }
+
+  @Post('idea-blocks')
+  @ApiOkResponse({ description: 'Create an idea block.' })
+  createIdeaBlock(@Body() payload: Record<string, unknown>) {
+    return this.adminService.createIdeaBlock(payload);
+  }
+
+  @Patch('idea-blocks/:id')
+  @ApiOkResponse({ description: 'Update an idea block.' })
+  updateIdeaBlock(@Param('id') id: string, @Body() payload: Record<string, unknown>) {
+    return this.adminService.updateIdeaBlock(id, payload);
+  }
+
+  @Delete('idea-blocks/:id')
+  @ApiOkResponse({ description: 'Delete an idea block.' })
+  deleteIdeaBlock(@Param('id') id: string) {
+    return this.adminService.deleteIdeaBlock(id);
+  }
+
+  // ==================== Incubations ====================
+
+  @Get('incubations')
+  @ApiOkResponse({ description: 'List incubations for admin CRUD.' })
+  listIncubations() {
+    return this.adminService.listIncubations();
+  }
+
+  @Patch('incubations/:id')
+  @ApiOkResponse({ description: 'Update an incubation.' })
+  updateIncubation(@Param('id') id: string, @Body() payload: Record<string, unknown>) {
+    return this.adminService.updateIncubation(id, payload);
+  }
+
+  @Delete('incubations/:id')
+  @ApiOkResponse({ description: 'Delete an incubation.' })
+  deleteIncubation(@Param('id') id: string) {
+    return this.adminService.deleteIncubation(id);
+  }
+
   // ==================== Patterns ====================
 
   @Get('patterns')

@@ -4,19 +4,21 @@ import {
   FileText, 
   MessageSquare, 
   Users, 
-  Settings,
+  Lightbulb,
   LogOut
 } from 'lucide-react';
 import { AdminDashboard } from './Dashboard';
 import { ContentManager } from './ContentManager';
 import { CommentManager } from './CommentManager';
 import { UserManager } from './UserManager';
+import { IdeaLabManager } from './IdeaLabManager';
 
-type TabType = 'dashboard' | 'content' | 'comments' | 'users';
+type TabType = 'dashboard' | 'content' | 'idea-lab' | 'comments' | 'users';
 
 const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
   { id: 'dashboard', label: '概览', icon: <LayoutDashboard className="w-4 h-4" /> },
   { id: 'content', label: '内容管理', icon: <FileText className="w-4 h-4" /> },
+  { id: 'idea-lab', label: '点子实验室', icon: <Lightbulb className="w-4 h-4" /> },
   { id: 'comments', label: '评论管理', icon: <MessageSquare className="w-4 h-4" /> },
   { id: 'users', label: '用户管理', icon: <Users className="w-4 h-4" /> },
 ];
@@ -128,6 +130,7 @@ export function AdminPage() {
             <div className="bg-white border rounded-lg p-6">
               {activeTab === 'dashboard' && <AdminDashboard />}
               {activeTab === 'content' && <ContentManager />}
+              {activeTab === 'idea-lab' && <IdeaLabManager />}
               {activeTab === 'comments' && <CommentManager />}
               {activeTab === 'users' && <UserManager />}
             </div>

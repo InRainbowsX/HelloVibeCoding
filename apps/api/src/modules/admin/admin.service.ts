@@ -640,6 +640,172 @@ export class AdminService {
     return app;
   }
 
+  // ==================== Idea Blocks Management ====================
+
+  async listIdeaBlocks() {
+    const items = await this.prisma.ideaBlock.findMany({
+      include: {
+        sources: {
+          include: { app: { select: { id: true, name: true, slug: true } } },
+        },
+        incubations: true,
+        _count: { select: { sources: true, incubations: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { 
+      items: items.map(item => ({
+        ...item,
+        sourceCount: item._count.sources,
+        incubationCount: item._count.incubations,
+        _count: undefined,
+      })), 
+      total: items.length 
+    };
+  }
+
+  async createIdeaBlock(payload: Record<string, unknown>) {
+    const slug = this.requiredString(payload.slug, 'slug');
+    const title = this.requiredString(payload.title, 'title');
+    const summary = this.requiredString(payload.summary, 'summary');
+    const blockType = this.normalizeBlockType(payload.blockType);
+    
+    const block = await this.prisma.ideaBlock.create({
+      data: {
+        slug,
+        title,
+        summary,
+        blockType: blockType as any,
+        tags: this.stringArray(payload.tags),
+        noveltyNote: this.optionalString(payload.noveltyNote),
+      },
+    });
+    return block;
+  }
+
+  async updateIdeaBlock(id: string, payload: Record<string, unknown>) {
+    const block = await this.prisma.ideaBlock.findUnique({ where: { id } });
+    if (!block) {
+      throw new NotFoundException(`Idea block ${id} not found`);
+    }
+
+    const updated = await this.prisma.ideaBlock.update({
+      where: { id },
+      data: {
+        ...(payload.slug !== undefined ? { slug: this.requiredString(payload.slug, 'slug') } : {}),
+        ...(payload.title !== undefined ? { title: this.requiredString(payload.title, 'title') } : {}),
+        ...(payload.summary !== undefined ? { summary: this.requiredString(payload.summary, 'summary') } : {}),
+        ...(payload.blockType !== undefined ? { blockType: this.normalizeBlockType(payload.blockType) as any } : {}),
+        ...(payload.tags !== undefined ? { tags: this.stringArray(payload.tags) } : {}),
+        ...(payload.noveltyNote !== undefined ? { noveltyNote: this.optionalString(payload.noveltyNote) } : {}),
+      },
+    });
+    return updated;
+  }
+
+  async deleteIdeaBlock(id: string) {
+    const block = await this.prisma.ideaBlock.findUnique({ where: { id } });
+    if (!block) {
+      throw new NotFoundException(`Idea block ${id} not found`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.incubationBlock.deleteMany({ where: { ideaBlockId: id } });
+      await tx.ideaBlockSource.deleteMany({ where: { ideaBlockId: id } });
+      await tx.ideaBlock.delete({ where: { id } });
+    });
+
+    return { success: true };
+  }
+
+  // ==================== Incubations Management ====================
+
+  async listIncubations() {
+    const items = await this.prisma.ideaIncubation.findMany({
+      include: {
+        blocks: {
+          include: {
+            ideaBlock: { select: { id: true, title: true, slug: true } },
+          },
+        },
+        sourceProjects: {
+          include: {
+            app: { select: { id: true, name: true, slug: true } },
+          },
+        },
+        discussions: { select: { id: true } },
+        rooms: { select: { id: true } },
+        _count: {
+          select: { discussions: true, rooms: true },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return { 
+      items: items.map(item => ({
+        ...item,
+        blockCount: item.blocks.length,
+        sourceProjectCount: item.sourceProjects.length,
+        discussionCount: item._count.discussions,
+        roomCount: item._count.rooms,
+        _count: undefined,
+      })), 
+      total: items.length 
+    };
+  }
+
+  async updateIncubation(id: string, payload: Record<string, unknown>) {
+    const incubation = await this.prisma.ideaIncubation.findUnique({ where: { id } });
+    if (!incubation) {
+      throw new NotFoundException(`Incubation ${id} not found`);
+    }
+
+    const updated = await this.prisma.ideaIncubation.update({
+      where: { id },
+      data: {
+        ...(payload.title !== undefined ? { title: this.requiredString(payload.title, 'title') } : {}),
+        ...(payload.oneLiner !== undefined ? { oneLiner: this.requiredString(payload.oneLiner, 'oneLiner') } : {}),
+        ...(payload.status !== undefined ? { status: this.normalizeIncubationStatus(payload.status) as any } : {}),
+      },
+    });
+    return updated;
+  }
+
+  async deleteIncubation(id: string) {
+    const incubation = await this.prisma.ideaIncubation.findUnique({ where: { id } });
+    if (!incubation) {
+      throw new NotFoundException(`Incubation ${id} not found`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.incubationBlock.deleteMany({ where: { incubationId: id } });
+      await tx.incubationProject.deleteMany({ where: { incubationId: id } });
+      const discussions = await tx.discussion.findMany({ where: { incubationId: id }, select: { id: true } });
+      for (const disc of discussions) {
+        await tx.comment.deleteMany({ where: { discussionId: disc.id } });
+      }
+      await tx.discussion.deleteMany({ where: { incubationId: id } });
+      await tx.room.deleteMany({ where: { incubationId: id } });
+      await tx.ideaIncubation.delete({ where: { id } });
+    });
+
+    return { success: true };
+  }
+
+  // ==================== Helper Methods ====================
+
+  private normalizeBlockType(value: unknown) {
+    const validTypes = ['FORMULA', 'FEATURE', 'WORKFLOW', 'CHANNEL'];
+    const str = String(value || '').toUpperCase();
+    return validTypes.includes(str) ? str : 'FEATURE';
+  }
+
+  private normalizeIncubationStatus(value: unknown) {
+    const validStatuses = ['OPEN', 'VALIDATING', 'BUILDING', 'ARCHIVED'];
+    const str = String(value || '').toUpperCase();
+    return validStatuses.includes(str) ? str : 'OPEN';
+  }
+
   private isJoinRequestStatus(value: string): value is JoinRequestStatus {
     return Object.values(JoinRequestStatus).includes(value as JoinRequestStatus);
   }

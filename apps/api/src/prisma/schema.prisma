@@ -383,6 +383,7 @@ model User {
   displayName   String
   avatarUrl     String?
   bio           String?
+  passwordHash  String?   // 真实用户才有密码，模拟用户为 null
   role          String    @default("USER")
   isSimulated   Boolean   @default(false)
   persona       String?   
