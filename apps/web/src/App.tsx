@@ -2,6 +2,10 @@ import { FormEvent, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 
 const AdminPage = lazy(() => import('./components/admin').then(m => ({ default: m.AdminPage })));
+import { AuthProvider } from './components/auth/AuthContext';
+import { LoginPage } from './components/auth/LoginPage';
+import { RegisterPage } from './components/auth/RegisterPage';
+import { UserMenu } from './components/auth/UserMenu';
 import { ArrowUpRight, CheckCircle2, CircleDashed, Flame, Flag, Lightbulb, Menu, MessageCircleMore, MessageSquareDot, PenSquare, QrCode, Sparkles, Target, X } from 'lucide-react';
 import {
   createIncubation,
@@ -203,6 +207,11 @@ function Shell({ children }: { children: React.ReactNode }) {
               </NavLink>
             ))}
           </nav>
+
+          {/* User Menu */}
+          <div className="hidden md:block">
+            <UserMenu />
+          </div>
 
           {/* Mobile Menu Toggle */}
           <button
@@ -2255,29 +2264,39 @@ function AdminRoute() {
   );
 }
 
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/admin/*" element={<AdminRoute />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/*" element={
+        <Shell>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/:slug" element={<ProjectDetailPage />} />
+            <Route path="/projects/:slug/teardown" element={<ProjectTeardownPage />} />
+            <Route path="/discussions" element={<Navigate to="/projects" replace />} />
+            <Route path="/idea-blocks" element={<IdeaBlocksPage />} />
+            <Route path="/incubations" element={<IncubationsPage />} />
+            <Route path="/incubations/:slug" element={<IncubationDetailPage />} />
+            <Route path="/compose" element={<Navigate to="/idea-blocks" replace />} />
+            <Route path="/rooms" element={<RoomsPage />} />
+            <Route path="/rooms/:slug" element={<RoomDetailPage />} />
+          </Routes>
+        </Shell>
+      } />
+    </Routes>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/admin/*" element={<AdminRoute />} />
-        <Route path="/*" element={
-          <Shell>
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/projects" element={<ProjectsPage />} />
-              <Route path="/projects/:slug" element={<ProjectDetailPage />} />
-              <Route path="/projects/:slug/teardown" element={<ProjectTeardownPage />} />
-              <Route path="/discussions" element={<Navigate to="/projects" replace />} />
-              <Route path="/idea-blocks" element={<IdeaBlocksPage />} />
-              <Route path="/incubations" element={<IncubationsPage />} />
-              <Route path="/incubations/:slug" element={<IncubationDetailPage />} />
-              <Route path="/compose" element={<Navigate to="/idea-blocks" replace />} />
-              <Route path="/rooms" element={<RoomsPage />} />
-              <Route path="/rooms/:slug" element={<RoomDetailPage />} />
-            </Routes>
-          </Shell>
-        } />
-      </Routes>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </BrowserRouter>
   );
 }
