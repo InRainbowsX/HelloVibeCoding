@@ -1,7 +1,10 @@
 // Admin API client for the management system
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || '';
+
+function getAdminToken(): string {
+  return localStorage.getItem('adminToken') || '';
+}
 
 export interface ContentStats {
   apps: Record<string, number>;
@@ -121,7 +124,7 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       'Content-Type': 'application/json',
-      'X-Admin-Token': ADMIN_TOKEN,
+      'X-Admin-Token': getAdminToken(),
       ...(init?.headers || {}),
     },
     ...init,

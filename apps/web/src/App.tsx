@@ -2247,24 +2247,37 @@ function ProjectTeardownPage() {
   );
 }
 
+function AdminRoute() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">加载中...</div>}>
+      <AdminPage />
+    </Suspense>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Shell>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:slug" element={<ProjectDetailPage />} />
-          <Route path="/projects/:slug/teardown" element={<ProjectTeardownPage />} />
-          <Route path="/discussions" element={<Navigate to="/projects" replace />} />
-          <Route path="/idea-blocks" element={<IdeaBlocksPage />} />
-          <Route path="/incubations" element={<IncubationsPage />} />
-          <Route path="/incubations/:slug" element={<IncubationDetailPage />} />
-          <Route path="/compose" element={<Navigate to="/idea-blocks" replace />} />
-          <Route path="/rooms" element={<RoomsPage />} />
-          <Route path="/rooms/:slug" element={<RoomDetailPage />} />
-        </Routes>
-      </Shell>
+      <Routes>
+        <Route path="/admin/*" element={<AdminRoute />} />
+        <Route path="/*" element={
+          <Shell>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:slug" element={<ProjectDetailPage />} />
+              <Route path="/projects/:slug/teardown" element={<ProjectTeardownPage />} />
+              <Route path="/discussions" element={<Navigate to="/projects" replace />} />
+              <Route path="/idea-blocks" element={<IdeaBlocksPage />} />
+              <Route path="/incubations" element={<IncubationsPage />} />
+              <Route path="/incubations/:slug" element={<IncubationDetailPage />} />
+              <Route path="/compose" element={<Navigate to="/idea-blocks" replace />} />
+              <Route path="/rooms" element={<RoomsPage />} />
+              <Route path="/rooms/:slug" element={<RoomDetailPage />} />
+            </Routes>
+          </Shell>
+        } />
+      </Routes>
     </BrowserRouter>
   );
 }
