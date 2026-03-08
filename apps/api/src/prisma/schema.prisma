@@ -1,0 +1,447 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PricingModel {
+  FREE
+  FREEMIUM
+  PAID
+  USAGE_BASED
+}
+
+enum TargetType {
+  APP
+  PROJECT
+  PATTERN
+  INCUBATION
+}
+
+enum IdeaBlockType {
+  FORMULA
+  FEATURE
+  WORKFLOW
+  CHANNEL
+}
+
+enum IncubationStatus {
+  OPEN
+  VALIDATING
+  BUILDING
+  ARCHIVED
+}
+
+enum RoomTargetType {
+  PROJECT
+  INCUBATION
+}
+
+enum RoomStatus {
+  OPEN
+  FULL
+  CLOSED
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CommentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SPAM
+}
+
+enum ContentStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model App {
+  id             String         @id @default(cuid())
+  slug           String         @unique
+  name           String
+  tagline        String?
+  saveTimeLabel  String
+  category       String
+  pricing        PricingModel
+  channels       String[]
+  targetPersona  String
+  hookAngle      String
+  trustSignals   String[]
+  difficulty     Int            @default(1)
+  heatScore      Int            @default(0)
+  screenshotUrls String[]
+  contentStatus  ContentStatus  @default(PUBLISHED)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  patternId      String?
+  pattern        Pattern?       @relation(fields: [patternId], references: [id])
+  discussions    Discussion[]
+  teardown       Teardown?
+  assetBundle    AppAssetBundle?
+  ideaEvidence   IdeaEvidence[]
+  ideaBlockSources IdeaBlockSource[]
+  incubationLinks IncubationProject[]
+  rooms          Room[]
+  auditLogs      AuditLog[]
+}
+
+model Idea {
+  id            String         @id @default(cuid())
+  title         String
+  note          String?
+  category      String
+  tags          String[]
+  votes         Int            @default(0)
+  featured      Boolean        @default(false)
+  isNovel       Boolean        @default(false)
+  novelReason   String?
+  novelTicks    String[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  evidence      IdeaEvidence[]
+  joinRequests  JoinRequest[]
+  members       Member[]
+  messages      IdeaMessage[]
+}
+
+model IdeaEvidence {
+  id         String   @id @default(cuid())
+  ideaId      String
+  sourceAppId String?
+  appTitle    String
+  appUrl      String
+  platform    String
+  iconUrl     String?
+  screenshotUrls String[]
+  fetchStatus String   @default("MANUAL")
+  fetchNote   String?
+  how         String
+  cpHook      String
+  cpWow       String
+  cpReturn    String
+  createdAt   DateTime @default(now())
+  idea        Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  sourceApp   App?     @relation(fields: [sourceAppId], references: [id], onDelete: SetNull)
+}
+
+model JoinRequest {
+  id          String            @id @default(cuid())
+  ideaId       String
+  userId       String
+  userName     String
+  q1Contrib    String
+  q2Improve    String
+  q3FirstStep  String
+  status       JoinRequestStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  idea         Idea              @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@unique([ideaId, userId])
+}
+
+model Member {
+  id         String   @id @default(cuid())
+  ideaId      String
+  userId      String
+  userName    String
+  createdAt   DateTime @default(now())
+  idea        Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@unique([ideaId, userId])
+}
+
+model IdeaMessage {
+  id         String   @id @default(cuid())
+  ideaId      String
+  userId      String
+  userName    String
+  content     String
+  createdAt   DateTime @default(now())
+  idea        Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+}
+
+model Pattern {
+  id              String       @id @default(cuid())
+  slug            String       @unique
+  name            String
+  description     String
+  useCases        String[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  apps            App[]
+  discussions     Discussion[]
+}
+
+model Discussion {
+  id              String       @id @default(cuid())
+  title           String
+  summary         String?
+  targetType      TargetType
+  targetId        String
+  likesCount      Int          @default(0)
+  replyCount      Int          @default(0)
+  lastActivityAt  DateTime     @default(now())
+  createdBy       String?
+  createdByUserId String?
+  contentStatus   ContentStatus @default(PUBLISHED)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  app             App?         @relation(fields: [appId], references: [id])
+  appId           String?
+  pattern         Pattern?     @relation(fields: [patternId], references: [id])
+  patternId       String?
+  incubation      IdeaIncubation? @relation(fields: [incubationId], references: [id])
+  incubationId    String?
+  comments        Comment[]
+  ideaBlocks      IdeaBlock[]
+  createdByUser   User?            @relation(fields: [createdByUserId], references: [id])
+}
+
+model Comment {
+  id              String       @id @default(cuid())
+  discussionId    String
+  authorId        String?
+  authorName      String
+  content         String
+  replyToCommentId String?
+  likesCount      Int          @default(0)
+  status          CommentStatus @default(APPROVED)
+  isSimulated     Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  discussion      Discussion   @relation(fields: [discussionId], references: [id])
+  author          User?        @relation(fields: [authorId], references: [id])
+}
+
+model IdeaBlock {
+  id             String            @id @default(cuid())
+  slug           String            @unique
+  title          String
+  summary        String
+  blockType      IdeaBlockType
+  tags           String[]
+  noveltyNote    String?
+  sourceThreadId String?
+  sourceThread   Discussion?       @relation(fields: [sourceThreadId], references: [id], onDelete: SetNull)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  sources        IdeaBlockSource[]
+  incubations    IncubationBlock[]
+}
+
+model IdeaBlockSource {
+  id          String    @id @default(cuid())
+  ideaBlockId String
+  appId       String
+  ideaBlock   IdeaBlock @relation(fields: [ideaBlockId], references: [id], onDelete: Cascade)
+  app         App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([ideaBlockId, appId])
+}
+
+model IdeaIncubation {
+  id              String             @id @default(cuid())
+  slug            String             @unique
+  title           String
+  oneLiner        String
+  status          IncubationStatus   @default(OPEN)
+  createdBy       String
+  discussionCount Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  discussions     Discussion[]
+  blocks          IncubationBlock[]
+  sourceProjects  IncubationProject[]
+  rooms           Room[]
+}
+
+model IncubationBlock {
+  id            String          @id @default(cuid())
+  incubationId  String
+  ideaBlockId   String
+  sortOrder     Int             @default(0)
+  incubation    IdeaIncubation  @relation(fields: [incubationId], references: [id], onDelete: Cascade)
+  ideaBlock     IdeaBlock       @relation(fields: [ideaBlockId], references: [id], onDelete: Cascade)
+
+  @@unique([incubationId, ideaBlockId])
+}
+
+model IncubationProject {
+  id            String          @id @default(cuid())
+  incubationId  String
+  appId         String
+  incubation    IdeaIncubation  @relation(fields: [incubationId], references: [id], onDelete: Cascade)
+  app           App             @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([incubationId, appId])
+}
+
+model Room {
+  id            String          @id @default(cuid())
+  slug          String          @unique
+  name          String
+  goal          String
+  targetType    RoomTargetType
+  targetId      String
+  status        RoomStatus      @default(OPEN)
+  createdBy     String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  appId         String?
+  incubationId  String?
+  app           App?            @relation(fields: [appId], references: [id], onDelete: SetNull)
+  incubation    IdeaIncubation? @relation(fields: [incubationId], references: [id], onDelete: SetNull)
+  members       RoomMember[]
+  joinRequests  RoomJoinRequest[]
+  messages      RoomMessage[]
+}
+
+model RoomMember {
+  id         String   @id @default(cuid())
+  roomId      String
+  userId      String
+  userName    String
+  createdAt   DateTime @default(now())
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
+
+model RoomJoinRequest {
+  id          String            @id @default(cuid())
+  roomId       String
+  userId       String
+  userName     String
+  q1Contrib    String
+  q2Improve    String
+  q3FirstStep  String
+  status       JoinRequestStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  room         Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
+
+model RoomMessage {
+  id         String   @id @default(cuid())
+  roomId      String
+  userId      String
+  userName    String
+  content     String
+  createdAt   DateTime @default(now())
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model Submission {
+  id              String           @id @default(cuid())
+  productName     String
+  websiteUrl      String
+  contactEmail    String
+  screenshotUrl   String?
+  selectedPattern String?
+  notes           String?
+  status          SubmissionStatus @default(PENDING)
+  createdAt       DateTime         @default(now())
+}
+
+model Subscriber {
+  id              String       @id @default(cuid())
+  email           String       @unique
+  createdAt       DateTime     @default(now())
+}
+
+model DigestIssue {
+  id              String       @id @default(cuid())
+  issueDate       DateTime
+  title           String
+  contentMarkdown String
+  createdAt       DateTime     @default(now())
+}
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  displayName   String
+  avatarUrl     String?
+  bio           String?
+  role          String    @default("USER")
+  isSimulated   Boolean   @default(false)
+  persona       String?   
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  comments      Comment[]
+  discussions   Discussion[]
+  auditLogs     AuditLog[]
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String
+  entityType  String
+  entityId    String
+  oldValue    String?
+  newValue    String?
+  reason      String?
+  adminId     String
+  createdAt   DateTime @default(now())
+  
+  admin       User     @relation(fields: [adminId], references: [id])
+  app         App?     @relation(fields: [entityId], references: [id], map: "audit_log_app_fk")
+}
+
+model Teardown {
+  id                String   @id @default(cuid())
+  appId             String   @unique
+  painSummary       String
+  painScore         String
+  triggerScene      String
+  corePromise       String
+  coreLoop          String
+  keyConstraints    String[]
+  mvpScope          String
+  dataInput         String?
+  dataOutput        String?
+  faultTolerance    String?
+  coldStartStrategy String
+  pricingLogic      String
+  competitorDelta   String
+  riskNotes         String
+  expansionSteps    String[]
+  reverseIdeas      String[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  app               App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+}
+
+model AppAssetBundle {
+  id                String   @id @default(cuid())
+  appId             String   @unique
+  hasAgentsTemplate Boolean  @default(false)
+  hasSpecTemplate   Boolean  @default(false)
+  hasPromptPack     Boolean  @default(false)
+  agentsTemplate    String?
+  specTemplate      String?
+  promptPack        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  app               App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+}

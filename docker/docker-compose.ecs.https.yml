@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hvc-db
+    restart: always
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hellovibecoding
+    volumes:
+      - hvc_db_data:/var/lib/postgresql/data
+
+  api:
+    image: hvc-api:deploy
+    platform: linux/amd64
+    build:
+      context: ../
+      dockerfile: apps/api/Dockerfile.mirror
+    container_name: hvc-api
+    restart: always
+    env_file:
+      - ./.env.ecs
+    expose:
+      - "3001"
+    volumes:
+      - ../uploads:/app/uploads
+    depends_on:
+      - db
+
+  nginx:
+    image: hvc-nginx:deploy
+    platform: linux/amd64
+    build:
+      context: ../
+      dockerfile: docker/nginx.Dockerfile
+    container_name: hvc-nginx
+    restart: always
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+
+volumes:
+  hvc_db_data:

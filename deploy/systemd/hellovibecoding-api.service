@@ -1,0 +1,17 @@
+[Unit]
+Description=helloVibeCoding NestJS API
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/hellovibecoding
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/hellovibecoding/.env
+ExecStart=/usr/bin/env corepack pnpm -C apps/api start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
