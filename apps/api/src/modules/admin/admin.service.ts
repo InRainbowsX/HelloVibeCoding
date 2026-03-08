@@ -264,10 +264,133 @@ export class AdminService {
         pattern: true,
         teardown: true,
         assetBundle: true,
+        _count: {
+          select: {
+            discussions: true,
+            ideaBlockSources: true,
+            incubationLinks: true,
+            rooms: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
-    return { items, total: items.length };
+    return { 
+      items: items.map(item => ({
+        ...item,
+        discussionCount: item._count.discussions,
+        ideaBlockCount: item._count.ideaBlockSources,
+        incubationCount: item._count.incubationLinks,
+        roomCount: item._count.rooms,
+        _count: undefined,
+      })), 
+      total: items.length 
+    };
+  }
+
+  async getAppDetail(id: string) {
+    const app = await this.prisma.app.findUnique({
+      where: { id },
+      include: {
+        pattern: true,
+        teardown: true,
+        assetBundle: true,
+        discussions: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          select: {
+            id: true,
+            title: true,
+            summary: true,
+            likesCount: true,
+            replyCount: true,
+            createdAt: true,
+          },
+        },
+        incubationLinks: {
+          include: {
+            incubation: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                oneLiner: true,
+                status: true,
+              },
+            },
+          },
+        },
+        ideaBlockSources: {
+          include: {
+            ideaBlock: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                blockType: true,
+                summary: true,
+              },
+            },
+          },
+        },
+        rooms: {
+          take: 10,
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            goal: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!app) {
+      throw new NotFoundException(`App ${id} not found`);
+    }
+
+    return app;
+  }
+
+  async updateTeardown(appId: string, payload: Record<string, unknown>) {
+    const app = await this.prisma.app.findUnique({ where: { id: appId } });
+    if (!app) {
+      throw new NotFoundException(`App ${appId} not found`);
+    }
+
+    const teardownData = this.buildTeardownData(payload);
+    
+    const teardown = await this.prisma.teardown.upsert({
+      where: { appId },
+      update: teardownData,
+      create: {
+        appId,
+        ...teardownData,
+      },
+    });
+
+    return teardown;
+  }
+
+  async updateAssetBundle(appId: string, payload: Record<string, unknown>) {
+    const app = await this.prisma.app.findUnique({ where: { id: appId } });
+    if (!app) {
+      throw new NotFoundException(`App ${appId} not found`);
+    }
+
+    const assetData = this.buildAssetBundleData(payload);
+    
+    const assetBundle = await this.prisma.appAssetBundle.upsert({
+      where: { appId },
+      update: assetData,
+      create: {
+        appId,
+        ...assetData,
+      },
+    });
+
+    return assetBundle;
   }
 
   async createApp(payload: Record<string, unknown>) {

@@ -90,6 +90,12 @@ export class AdminController {
     return this.adminService.listApps();
   }
 
+  @Get('apps/:id')
+  @ApiOkResponse({ description: 'Get app detail with all relations.' })
+  getAppDetail(@Param('id') id: string) {
+    return this.adminService.getAppDetail(id);
+  }
+
   @Post('apps')
   @ApiOkResponse({ description: 'Create an app draft with nested teardown and asset bundle.' })
   createApp(@Body() payload: Record<string, unknown>) {
@@ -110,6 +116,24 @@ export class AdminController {
     @Query('adminId') adminId?: string,
   ) {
     return this.contentService.updateAppContent(id, dto as Record<string, unknown>, adminId || 'system');
+  }
+
+  @Patch('apps/:id/teardown')
+  @ApiOkResponse({ description: 'Update app teardown (8-grid teardown).' })
+  updateTeardown(
+    @Param('id') id: string, 
+    @Body() payload: Record<string, unknown>,
+  ) {
+    return this.adminService.updateTeardown(id, payload);
+  }
+
+  @Patch('apps/:id/asset-bundle')
+  @ApiOkResponse({ description: 'Update app asset bundle (templates, prompts).' })
+  updateAssetBundle(
+    @Param('id') id: string, 
+    @Body() payload: Record<string, unknown>,
+  ) {
+    return this.adminService.updateAssetBundle(id, payload);
   }
 
   @Post('apps/bulk-status')

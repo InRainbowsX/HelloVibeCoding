@@ -99,13 +99,89 @@ export interface AppContent {
   saveTimeLabel: string;
   category: string;
   pricing: string;
+  channels: string[];
   targetPersona: string;
   hookAngle: string;
+  trustSignals: string[];
   heatScore: number;
   difficulty: number;
   contentStatus: string;
   screenshotUrls: string[];
   pattern?: { id: string; name: string; slug: string } | null;
+  teardown?: TeardownContent | null;
+  assetBundle?: AssetBundleContent | null;
+  discussionCount?: number;
+  ideaBlockCount?: number;
+  incubationCount?: number;
+  roomCount?: number;
+}
+
+export interface TeardownContent {
+  id: string;
+  painSummary: string;
+  painScore: string;
+  triggerScene: string;
+  corePromise: string;
+  coreLoop: string;
+  keyConstraints: string[];
+  mvpScope: string;
+  dataInput?: string | null;
+  dataOutput?: string | null;
+  faultTolerance?: string | null;
+  coldStartStrategy: string;
+  pricingLogic: string;
+  competitorDelta: string;
+  riskNotes: string;
+  expansionSteps: string[];
+  reverseIdeas: string[];
+}
+
+export interface AssetBundleContent {
+  id: string;
+  hasAgentsTemplate: boolean;
+  hasSpecTemplate: boolean;
+  hasPromptPack: boolean;
+  agentsTemplate?: string | null;
+  specTemplate?: string | null;
+  promptPack?: string | null;
+}
+
+export interface AppDetail extends AppContent {
+  discussions: Array<{
+    id: string;
+    title: string;
+    summary?: string | null;
+    likesCount: number;
+    replyCount: number;
+    createdAt: string;
+  }>;
+  incubationLinks: Array<{
+    id: string;
+    incubation: {
+      id: string;
+      slug: string;
+      title: string;
+      oneLiner: string;
+      status: string;
+    };
+  }>;
+  ideaBlockSources: Array<{
+    id: string;
+    ideaBlock: {
+      id: string;
+      slug: string;
+      title: string;
+      blockType: string;
+      summary: string;
+    };
+  }>;
+  rooms: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    goal: string;
+    status: string;
+  }>;
 }
 
 export interface DiscussionContent {
@@ -154,8 +230,26 @@ export function listAdminApps() {
   return adminRequest<{ items: AppContent[]; total: number }>('/admin/apps');
 }
 
+export function getAdminAppDetail(id: string) {
+  return adminRequest<AppDetail>(`/admin/apps/${id}`);
+}
+
 export function updateAppContent(id: string, data: Partial<AppContent>) {
   return adminRequest<AppContent>(`/admin/apps/${id}/content`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateTeardown(appId: string, data: Partial<TeardownContent>) {
+  return adminRequest<TeardownContent>(`/admin/apps/${appId}/teardown`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateAssetBundle(appId: string, data: Partial<AssetBundleContent>) {
+  return adminRequest<AssetBundleContent>(`/admin/apps/${appId}/asset-bundle`, {
     method: 'PATCH',
     body: JSON.stringify(data),
   });

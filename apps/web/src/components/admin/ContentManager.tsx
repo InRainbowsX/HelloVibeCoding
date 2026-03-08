@@ -1,6 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Edit2, CheckCircle, XCircle, Eye, MoreHorizontal } from 'lucide-react';
-import { listAdminApps, listAdminDiscussions, updateAppContent, updateDiscussionContent, bulkUpdateAppStatus, type AppContent, type DiscussionContent } from '../../lib/admin-api';
+import { Search, Edit2, CheckCircle, Eye, ChevronDown, ChevronRight } from 'lucide-react';
+import { 
+  listAdminApps, 
+  listAdminDiscussions, 
+  updateAppContent, 
+  updateDiscussionContent, 
+  bulkUpdateAppStatus,
+  getAdminAppDetail,
+  updateTeardown,
+  updateAssetBundle,
+  type AppContent, 
+  type DiscussionContent,
+  type AppDetail,
+  type TeardownContent,
+  type AssetBundleContent
+} from '../../lib/admin-api';
 
 type ContentType = 'apps' | 'discussions';
 type ContentStatus = 'PUBLISHED' | 'PENDING_REVIEW' | 'DRAFT' | 'REJECTED';
@@ -27,7 +41,9 @@ export function ContentManager() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ContentStatus | 'all'>('all');
   const [editingItem, setEditingItem] = useState<AppContent | DiscussionContent | null>(null);
+  const [editingDetail, setEditingDetail] = useState<AppDetail | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [activeSection, setActiveSection] = useState<'basic' | 'teardown' | 'assets' | 'relations'>('basic');
 
   useEffect(() => {
     loadData();
@@ -47,6 +63,15 @@ export function ContentManager() {
       console.error('Failed to load data:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadAppDetail(id: string) {
+    try {
+      const detail = await getAdminAppDetail(id);
+      setEditingDetail(detail);
+    } catch (error) {
+      console.error('Failed to load app detail:', error);
     }
   }
 
@@ -101,6 +126,12 @@ export function ContentManager() {
       newSelected.add(id);
     }
     setSelectedItems(newSelected);
+  }
+
+  async function handleEditClick(item: AppContent) {
+    setEditingItem(item);
+    setActiveSection('basic');
+    await loadAppDetail(item.id);
   }
 
   return (
@@ -170,12 +201,6 @@ export function ContentManager() {
             >
               批量通过
             </button>
-            <button
-              onClick={() => handleBulkStatusChange('REJECTED')}
-              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
-            >
-              批量拒绝
-            </button>
           </div>
         )}
       </div>
@@ -207,6 +232,7 @@ export function ContentManager() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">作品</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">分类</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">热度</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">统计</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">状态</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
@@ -235,11 +261,18 @@ export function ContentManager() {
                   </td>
                   <td className="px-4 py-3 text-sm">{app.category}</td>
                   <td className="px-4 py-3 text-sm">{app.heatScore}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    <div className="flex gap-2">
+                      <span title="讨论">💬{app.discussionCount || 0}</span>
+                      <span title="点子">💡{app.ideaBlockCount || 0}</span>
+                      <span title="孵化">🥚{app.incubationCount || 0}</span>
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <select
                       value={app.contentStatus}
                       onChange={(e) => handleStatusChange(app, e.target.value as ContentStatus)}
-                      className={`text-xs px-2 py-1 rounded-full border-0 ${statusColors[app.contentStatus]}`}
+                      className={`text-xs px-2 py-1 rounded-full border-0 ${statusColors[app.contentStatus] || 'bg-gray-100'}`}
                     >
                       {Object.entries(statusLabels).map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
@@ -249,9 +282,9 @@ export function ContentManager() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setEditingItem(app)}
+                        onClick={() => handleEditClick(app)}
                         className="p-1 hover:bg-gray-100 rounded"
-                        title="编辑"
+                        title="编辑完整信息"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -303,7 +336,7 @@ export function ContentManager() {
                     <select
                       value={disc.contentStatus}
                       onChange={(e) => handleStatusChange(disc, e.target.value as ContentStatus)}
-                      className={`text-xs px-2 py-1 rounded-full border-0 ${statusColors[disc.contentStatus]}`}
+                      className={`text-xs px-2 py-1 rounded-full border-0 ${statusColors[disc.contentStatus] || 'bg-gray-100'}`}
                     >
                       {Object.entries(statusLabels).map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
@@ -331,20 +364,27 @@ export function ContentManager() {
       )}
 
       {/* Edit Modal */}
-      {editingItem && (
-        <EditModal
+      {editingItem && 'slug' in editingItem && (
+        <AppEditModal
           item={editingItem}
-          onClose={() => setEditingItem(null)}
-          onSave={async (data) => {
+          detail={editingDetail}
+          activeSection={activeSection}
+          setActiveSection={setActiveSection}
+          onClose={() => {
+            setEditingItem(null);
+            setEditingDetail(null);
+          }}
+          onSave={async (data, section) => {
             try {
-              if ('slug' in editingItem) {
+              if (section === 'basic') {
                 await updateAppContent(editingItem.id, data);
                 setApps(apps.map(a => a.id === editingItem.id ? { ...a, ...data } : a));
-              } else {
-                await updateDiscussionContent(editingItem.id, data);
-                setDiscussions(discussions.map(d => d.id === editingItem.id ? { ...d, ...data } : d));
+              } else if (section === 'teardown' && data.teardown) {
+                await updateTeardown(editingItem.id, data.teardown);
+              } else if (section === 'assets' && data.assetBundle) {
+                await updateAssetBundle(editingItem.id, data.assetBundle);
               }
-              setEditingItem(null);
+              await loadAppDetail(editingItem.id);
             } catch (error) {
               alert('保存失败');
             }
@@ -355,136 +395,445 @@ export function ContentManager() {
   );
 }
 
-interface EditModalProps {
-  item: AppContent | DiscussionContent;
+interface AppEditModalProps {
+  item: AppContent;
+  detail: AppDetail | null;
+  activeSection: 'basic' | 'teardown' | 'assets' | 'relations';
+  setActiveSection: (section: 'basic' | 'teardown' | 'assets' | 'relations') => void;
   onClose: () => void;
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: any, section: string) => Promise<void>;
 }
 
-function EditModal({ item, onClose, onSave }: EditModalProps) {
-  const [data, setData] = useState(item);
+function AppEditModal({ item, detail, activeSection, setActiveSection, onClose, onSave }: AppEditModalProps) {
+  const [basicData, setBasicData] = useState(item);
+  const [teardownData, setTeardownData] = useState<Partial<TeardownContent>>(detail?.teardown || {});
+  const [assetData, setAssetData] = useState<Partial<AssetBundleContent>>(detail?.assetBundle || {});
   const [saving, setSaving] = useState(false);
 
-  const isApp = 'slug' in item;
+  // Update local state when detail loads
+  useEffect(() => {
+    if (detail) {
+      setBasicData(detail);
+      setTeardownData(detail.teardown || {});
+      setAssetData(detail.assetBundle || {});
+    }
+  }, [detail]);
+
+  const sections = [
+    { id: 'basic', label: '基础信息', icon: '📋' },
+    { id: 'teardown', label: '8格拆解', icon: '🔍' },
+    { id: 'assets', label: '构建资源', icon: '📦' },
+    { id: 'relations', label: '关联数据', icon: '🔗' },
+  ];
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-auto m-4">
-        <div className="p-6 border-b">
-          <h2 className="text-lg font-semibold">编辑{isApp ? '作品' : '讨论'}</h2>
+      <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto m-4">
+        <div className="p-6 border-b flex justify-between items-center">
+          <div>
+            <h2 className="text-lg font-semibold">编辑作品: {item.name}</h2>
+            <p className="text-sm text-gray-500 mt-1">slug: {item.slug}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
         
+        <div className="flex border-b">
+          {sections.map((section) => (
+            <button
+              key={section.id}
+              onClick={() => setActiveSection(section.id as any)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeSection === section.id
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <span>{section.icon}</span>
+              {section.label}
+            </button>
+          ))}
+        </div>
+
         <div className="p-6 space-y-4">
-          {isApp ? (
-            <>
+          {activeSection === 'basic' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">名称</label>
+                  <input
+                    type="text"
+                    value={basicData.name}
+                    onChange={(e) => setBasicData({ ...basicData, name: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">分类</label>
+                  <input
+                    type="text"
+                    value={basicData.category}
+                    onChange={(e) => setBasicData({ ...basicData, category: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
               <div>
-                <label className="block text-sm font-medium mb-1">名称</label>
+                <label className="block text-sm font-medium mb-1">标签线 (Tagline)</label>
                 <input
                   type="text"
-                  value={(data as AppContent).name}
-                  onChange={(e) => setData({ ...data, name: e.target.value })}
+                  value={basicData.tagline || ''}
+                  onChange={(e) => setBasicData({ ...basicData, tagline: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">标签线</label>
+                <label className="block text-sm font-medium mb-1">一句话描述 (SaveTimeLabel)</label>
                 <input
                   type="text"
-                  value={(data as AppContent).tagline || ''}
-                  onChange={(e) => setData({ ...data, tagline: e.target.value })}
+                  value={basicData.saveTimeLabel}
+                  onChange={(e) => setBasicData({ ...basicData, saveTimeLabel: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">分类</label>
+                  <label className="block text-sm font-medium mb-1">目标用户</label>
                   <input
                     type="text"
-                    value={(data as AppContent).category}
-                    onChange={(e) => setData({ ...data, category: e.target.value })}
+                    value={basicData.targetPersona}
+                    onChange={(e) => setBasicData({ ...basicData, targetPersona: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">热度</label>
+                  <label className="block text-sm font-medium mb-1">钩子角度</label>
+                  <input
+                    type="text"
+                    value={basicData.hookAngle}
+                    onChange={(e) => setBasicData({ ...basicData, hookAngle: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">热度 (0-100)</label>
                   <input
                     type="number"
-                    value={(data as AppContent).heatScore}
-                    onChange={(e) => setData({ ...data, heatScore: parseInt(e.target.value) })}
+                    min="0"
+                    max="100"
+                    value={basicData.heatScore}
+                    onChange={(e) => setBasicData({ ...basicData, heatScore: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">难度 (1-5)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={basicData.difficulty}
+                    onChange={(e) => setBasicData({ ...basicData, difficulty: parseInt(e.target.value) || 1 })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">定价模式</label>
+                  <select
+                    value={basicData.pricing}
+                    onChange={(e) => setBasicData({ ...basicData, pricing: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="FREE">免费</option>
+                    <option value="FREEMIUM">Freemium</option>
+                    <option value="PAID">付费</option>
+                    <option value="USAGE_BASED">按量</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">信任信号 (逗号分隔)</label>
+                <input
+                  type="text"
+                  value={basicData.trustSignals?.join(', ') || ''}
+                  onChange={(e) => setBasicData({ ...basicData, trustSignals: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'teardown' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">痛点摘要</label>
+                  <textarea
+                    rows={2}
+                    value={teardownData.painSummary || ''}
+                    onChange={(e) => setTeardownData({ ...teardownData, painSummary: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">痛点评分</label>
+                  <input
+                    type="text"
+                    value={teardownData.painScore || ''}
+                    onChange={(e) => setTeardownData({ ...teardownData, painScore: e.target.value })}
+                    placeholder="高频 / 低门槛 / 高传播"
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">触发场景</label>
+                  <textarea
+                    rows={2}
+                    value={teardownData.triggerScene || ''}
+                    onChange={(e) => setTeardownData({ ...teardownData, triggerScene: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">核心承诺</label>
+                  <textarea
+                    rows={2}
+                    value={teardownData.corePromise || ''}
+                    onChange={(e) => setTeardownData({ ...teardownData, corePromise: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">目标用户</label>
-                <input
-                  type="text"
-                  value={(data as AppContent).targetPersona}
-                  onChange={(e) => setData({ ...data, targetPersona: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">钩子角度</label>
-                <input
-                  type="text"
-                  value={(data as AppContent).hookAngle}
-                  onChange={(e) => setData({ ...data, hookAngle: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <label className="block text-sm font-medium mb-1">标题</label>
-                <input
-                  type="text"
-                  value={(data as DiscussionContent).title}
-                  onChange={(e) => setData({ ...data, title: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">摘要</label>
+                <label className="block text-sm font-medium mb-1">核心循环</label>
                 <textarea
-                  value={(data as DiscussionContent).summary || ''}
-                  onChange={(e) => setData({ ...data, summary: e.target.value })}
-                  rows={3}
+                  rows={2}
+                  value={teardownData.coreLoop || ''}
+                  onChange={(e) => setTeardownData({ ...teardownData, coreLoop: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">点赞数</label>
+                <label className="block text-sm font-medium mb-1">关键约束 (逗号分隔)</label>
                 <input
-                  type="number"
-                  value={(data as DiscussionContent).likesCount}
-                  onChange={(e) => setData({ ...data, likesCount: parseInt(e.target.value) })}
+                  type="text"
+                  value={teardownData.keyConstraints?.join(', ') || ''}
+                  onChange={(e) => setTeardownData({ ...teardownData, keyConstraints: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
                   className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            </>
+              <div>
+                <label className="block text-sm font-medium mb-1">MVP 范围</label>
+                <textarea
+                  rows={2}
+                  value={teardownData.mvpScope || ''}
+                  onChange={(e) => setTeardownData({ ...teardownData, mvpScope: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">冷启动策略</label>
+                  <textarea
+                    rows={2}
+                    value={teardownData.coldStartStrategy || ''}
+                    onChange={(e) => setTeardownData({ ...teardownData, coldStartStrategy: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">定价逻辑</label>
+                  <textarea
+                    rows={2}
+                    value={teardownData.pricingLogic || ''}
+                    onChange={(e) => setTeardownData({ ...teardownData, pricingLogic: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">竞争差异</label>
+                  <textarea
+                    rows={2}
+                    value={teardownData.competitorDelta || ''}
+                    onChange={(e) => setTeardownData({ ...teardownData, competitorDelta: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">风险备注</label>
+                  <textarea
+                    rows={2}
+                    value={teardownData.riskNotes || ''}
+                    onChange={(e) => setTeardownData({ ...teardownData, riskNotes: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">扩展步骤 (逗号分隔)</label>
+                <input
+                  type="text"
+                  value={teardownData.expansionSteps?.join(', ') || ''}
+                  onChange={(e) => setTeardownData({ ...teardownData, expansionSteps: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">反向点子 (逗号分隔)</label>
+                <input
+                  type="text"
+                  value={teardownData.reverseIdeas?.join(', ') || ''}
+                  onChange={(e) => setTeardownData({ ...teardownData, reverseIdeas: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'assets' && (
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={assetData.hasAgentsTemplate}
+                    onChange={(e) => setAssetData({ ...assetData, hasAgentsTemplate: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm">有 Agents 模板</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={assetData.hasSpecTemplate}
+                    onChange={(e) => setAssetData({ ...assetData, hasSpecTemplate: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm">有 Spec 模板</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={assetData.hasPromptPack}
+                    onChange={(e) => setAssetData({ ...assetData, hasPromptPack: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm">有 Prompt Pack</span>
+                </label>
+              </div>
+              {assetData.hasAgentsTemplate && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Agents 模板内容 (Markdown)</label>
+                  <textarea
+                    rows={6}
+                    value={assetData.agentsTemplate || ''}
+                    onChange={(e) => setAssetData({ ...assetData, agentsTemplate: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                  />
+                </div>
+              )}
+              {assetData.hasSpecTemplate && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Spec 模板内容 (Markdown)</label>
+                  <textarea
+                    rows={6}
+                    value={assetData.specTemplate || ''}
+                    onChange={(e) => setAssetData({ ...assetData, specTemplate: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                  />
+                </div>
+              )}
+              {assetData.hasPromptPack && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Prompt Pack 内容</label>
+                  <textarea
+                    rows={6}
+                    value={assetData.promptPack || ''}
+                    onChange={(e) => setAssetData({ ...assetData, promptPack: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeSection === 'relations' && detail && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-medium mb-3">关联的讨论 ({detail.discussions?.length || 0})</h3>
+                <div className="space-y-2">
+                  {detail.discussions?.map(disc => (
+                    <div key={disc.id} className="bg-gray-50 p-3 rounded text-sm">
+                      <p className="font-medium">{disc.title}</p>
+                      <p className="text-gray-500 mt-1">💬 {disc.replyCount} 回复 · 👍 {disc.likesCount}</p>
+                    </div>
+                  )) || <p className="text-gray-500 text-sm">暂无讨论</p>}
+                </div>
+              </div>
+              <div>
+                <h3 className="font-medium mb-3">关联的点子块 ({detail.ideaBlockSources?.length || 0})</h3>
+                <div className="space-y-2">
+                  {detail.ideaBlockSources?.map(source => (
+                    <div key={source.id} className="bg-gray-50 p-3 rounded text-sm">
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{source.ideaBlock.blockType}</span>
+                      <p className="font-medium mt-1">{source.ideaBlock.title}</p>
+                      <p className="text-gray-500 line-clamp-1">{source.ideaBlock.summary}</p>
+                    </div>
+                  )) || <p className="text-gray-500 text-sm">暂无点子块</p>}
+                </div>
+              </div>
+              <div>
+                <h3 className="font-medium mb-3">关联的孵化 ({detail.incubationLinks?.length || 0})</h3>
+                <div className="space-y-2">
+                  {detail.incubationLinks?.map(link => (
+                    <div key={link.id} className="bg-gray-50 p-3 rounded text-sm">
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">{link.incubation.status}</span>
+                      <p className="font-medium mt-1">{link.incubation.title}</p>
+                      <p className="text-gray-500 line-clamp-1">{link.incubation.oneLiner}</p>
+                    </div>
+                  )) || <p className="text-gray-500 text-sm">暂无孵化</p>}
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
-        <div className="p-6 border-t flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            取消
-          </button>
-          <button
-            onClick={async () => {
-              setSaving(true);
-              await onSave(data);
-              setSaving(false);
-            }}
-            disabled={saving}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? '保存中...' : '保存'}
-          </button>
+        <div className="p-6 border-t flex justify-between items-center">
+          <div className="text-sm text-gray-500">
+            {activeSection === 'basic' && '编辑基础展示信息'}
+            {activeSection === 'teardown' && '编辑8格商业拆解'}
+            {activeSection === 'assets' && '编辑构建资源模板'}
+            {activeSection === 'relations' && '查看关联数据（只读）'}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+            >
+              关闭
+            </button>
+            {activeSection !== 'relations' && (
+              <button
+                onClick={async () => {
+                  setSaving(true);
+                  const data = activeSection === 'basic' ? basicData : 
+                               activeSection === 'teardown' ? { teardown: teardownData } :
+                               { assetBundle: assetData };
+                  await onSave(data, activeSection);
+                  setSaving(false);
+                }}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? '保存中...' : '保存'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
