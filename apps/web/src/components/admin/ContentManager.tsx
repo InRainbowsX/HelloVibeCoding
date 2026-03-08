@@ -68,10 +68,10 @@ export function ContentManager() {
   async function handleStatusChange(item: AppContent | DiscussionContent, newStatus: ContentStatus) {
     try {
       if ('slug' in item) {
-        await updateAppContent(item.id, { contentStatus: newStatus });
+        await updateAppContent(item.id, { contentStatus: newStatus as string });
         setApps(apps.map(a => a.id === item.id ? { ...a, contentStatus: newStatus } : a));
       } else {
-        await updateDiscussionContent(item.id, { contentStatus: newStatus });
+        await updateDiscussionContent(item.id, { contentStatus: newStatus as string });
         setDiscussions(discussions.map(d => d.id === item.id ? { ...d, contentStatus: newStatus } : d));
       }
     } catch (error) {

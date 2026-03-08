@@ -259,7 +259,7 @@ export class AdminService {
   }
 
   async listApps() {
-    return this.prisma.app.findMany({
+    const items = await this.prisma.app.findMany({
       include: {
         pattern: true,
         teardown: true,
@@ -267,6 +267,7 @@ export class AdminService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return { items, total: items.length };
   }
 
   async createApp(payload: Record<string, unknown>) {
@@ -394,7 +395,7 @@ export class AdminService {
   }
 
   async listDiscussions() {
-    return this.prisma.discussion.findMany({
+    const items = await this.prisma.discussion.findMany({
       include: {
         comments: {
           orderBy: { createdAt: 'asc' },
@@ -402,6 +403,7 @@ export class AdminService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return { items, total: items.length };
   }
 
   async updateDiscussion(id: string, payload: Record<string, unknown>) {
