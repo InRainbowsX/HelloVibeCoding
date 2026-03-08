@@ -109,7 +109,7 @@ export class AdminController {
     @Body() dto: UpdateAppContentDto,
     @Query('adminId') adminId?: string,
   ) {
-    return this.contentService.updateAppContent(id, dto, adminId || 'system');
+    return this.contentService.updateAppContent(id, dto as Record<string, unknown>, adminId || 'system');
   }
 
   @Post('apps/bulk-status')
@@ -174,7 +174,7 @@ export class AdminController {
     @Body() dto: UpdateDiscussionContentDto,
     @Query('adminId') adminId?: string,
   ) {
-    return this.contentService.updateDiscussionContent(id, dto, adminId || 'system');
+    return this.contentService.updateDiscussionContent(id, dto as Record<string, unknown>, adminId || 'system');
   }
 
   @Delete('discussions/:id')
