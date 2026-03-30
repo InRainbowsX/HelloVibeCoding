@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EngagementTargetType } from '@prisma/client';
+import { EngagementService } from '../engagement/engagement.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RecommendIdeaProductsDto } from './dto/recommend-idea-products.dto';
 
@@ -8,9 +10,10 @@ export class IdeaBlocksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly engagementService: EngagementService,
   ) {}
 
-  async findAll(pageRaw?: string, pageSizeRaw?: string) {
+  async findAll(pageRaw?: string, pageSizeRaw?: string, viewerId?: string) {
     const page = Math.max(Number(pageRaw || 1), 1);
     const pageSize = Math.min(Math.max(Number(pageSizeRaw || 20), 1), 50);
 
@@ -31,6 +34,12 @@ export class IdeaBlocksService {
       }),
     ]);
 
+    const states = await this.engagementService.mapStates(
+      EngagementTargetType.IDEA_BLOCK,
+      items.map((item) => item.id),
+      viewerId,
+    );
+
     return {
       items: items.map((item) => ({
         id: item.id,
@@ -45,6 +54,10 @@ export class IdeaBlocksService {
           name: source.app.name,
         })),
         incubationCount: item.incubations.length,
+        likeCount: states.get(item.id)?.likeCount || 0,
+        favoriteCount: states.get(item.id)?.favoriteCount || 0,
+        viewerHasLiked: states.get(item.id)?.viewerHasLiked || false,
+        viewerHasFavorited: states.get(item.id)?.viewerHasFavorited || false,
       })),
       total,
       page,
@@ -52,7 +65,7 @@ export class IdeaBlocksService {
     };
   }
 
-  async findOne(slug: string) {
+  async findOne(slug: string, viewerId?: string) {
     const block = await this.prisma.ideaBlock.findUnique({
       where: { slug },
       include: {
@@ -73,6 +86,8 @@ export class IdeaBlocksService {
       throw new NotFoundException(`Idea block ${slug} not found`);
     }
 
+    const state = await this.engagementService.getState(EngagementTargetType.IDEA_BLOCK, block.id, viewerId);
+
     return {
       id: block.id,
       slug: block.slug,
@@ -81,6 +96,10 @@ export class IdeaBlocksService {
       blockType: block.blockType,
       tags: block.tags,
       noveltyNote: block.noveltyNote,
+      likeCount: state.likeCount,
+      favoriteCount: state.favoriteCount,
+      viewerHasLiked: state.viewerHasLiked,
+      viewerHasFavorited: state.viewerHasFavorited,
       sourceProjects: block.sources.map((source) => ({
         slug: source.app.slug,
         name: source.app.name,
@@ -267,5 +286,31 @@ export class IdeaBlocksService {
         summary: `围绕 ${titles.join('、')} 做一个更有传播感的 MVP，用内容包装和讨论驱动先拿到第一批反馈。`,
       },
     ];
+  }
+
+  async toggleLike(slug: string, userId: string, active?: boolean) {
+    const block = await this.prisma.ideaBlock.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+
+    if (!block) {
+      throw new NotFoundException(`Idea block ${slug} not found`);
+    }
+
+    return this.engagementService.toggleLike(EngagementTargetType.IDEA_BLOCK, block.id, userId, active);
+  }
+
+  async toggleFavorite(slug: string, userId: string, active?: boolean) {
+    const block = await this.prisma.ideaBlock.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+
+    if (!block) {
+      throw new NotFoundException(`Idea block ${slug} not found`);
+    }
+
+    return this.engagementService.toggleFavorite(EngagementTargetType.IDEA_BLOCK, block.id, userId, active);
   }
 }

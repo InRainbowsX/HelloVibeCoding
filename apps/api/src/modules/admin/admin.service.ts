@@ -669,18 +669,55 @@ export class AdminService {
     const title = this.requiredString(payload.title, 'title');
     const summary = this.requiredString(payload.summary, 'summary');
     const blockType = this.normalizeBlockType(payload.blockType);
-    
-    const block = await this.prisma.ideaBlock.create({
-      data: {
-        slug,
-        title,
-        summary,
-        blockType: blockType as any,
-        tags: this.stringArray(payload.tags),
-        noveltyNote: this.optionalString(payload.noveltyNote),
-      },
+    const sourceAppIds = Array.from(new Set(this.stringArray(payload.sourceAppIds)));
+
+    const block = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.ideaBlock.create({
+        data: {
+          slug,
+          title,
+          summary,
+          blockType: blockType as any,
+          tags: this.stringArray(payload.tags),
+          noveltyNote: this.optionalString(payload.noveltyNote),
+        },
+      });
+
+      if (sourceAppIds.length) {
+        const apps = await tx.app.findMany({
+          where: { id: { in: sourceAppIds } },
+          select: { id: true },
+        });
+
+        if (apps.length) {
+          await tx.ideaBlockSource.createMany({
+            data: apps.map((app) => ({
+              ideaBlockId: created.id,
+              appId: app.id,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return tx.ideaBlock.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          sources: {
+            include: { app: { select: { id: true, name: true, slug: true } } },
+          },
+          incubations: true,
+          _count: { select: { sources: true, incubations: true } },
+        },
+      });
     });
-    return block;
+
+    return {
+      ...block,
+      sourceCount: block._count.sources,
+      incubationCount: block._count.incubations,
+      _count: undefined,
+    };
   }
 
   async updateIdeaBlock(id: string, payload: Record<string, unknown>) {

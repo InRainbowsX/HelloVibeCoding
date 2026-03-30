@@ -2,11 +2,13 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request = require('supertest');
 import { AppModule } from '../src/modules/app.module';
+import { PrismaService } from '../src/modules/prisma/prisma.service';
 
 const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/hellovibecoding';
 
 describe('Project-centered API e2e', () => {
   let app: INestApplication;
+  let prisma: PrismaService;
 
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
@@ -16,6 +18,7 @@ describe('Project-centered API e2e', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    prisma = moduleRef.get(PrismaService);
     app.setGlobalPrefix('api/v1');
     await app.init();
   });
@@ -52,6 +55,16 @@ describe('Project-centered API e2e', () => {
     expect(Array.isArray(response.body.ideaBlocks)).toBe(true);
     expect(Array.isArray(response.body.incubations)).toBe(true);
     expect(Array.isArray(response.body.rooms)).toBe(true);
+  });
+
+  it('GET /api/v1/projects/:slug returns external entry links for the source product', async () => {
+    const response = await request(app.getHttpServer()).get('/api/v1/projects/poop-map');
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body.entryLinks)).toBe(true);
+    expect(response.body.entryLinks.length).toBeGreaterThan(0);
+    expect(response.body.entryLinks[0]).toHaveProperty('label');
+    expect(response.body.entryLinks[0]).toHaveProperty('url');
   });
 
   it('GET /api/v1/idea-blocks returns reusable block cards', async () => {
@@ -215,5 +228,285 @@ describe('Project-centered API e2e', () => {
     expect(createResponse.body.targetType).toBe('INCUBATION');
     expect(Array.isArray(createResponse.body.comments)).toBe(true);
     expect(createResponse.body.comments).toHaveLength(1);
+  });
+
+  it('POST /api/v1/auth/register returns token and assigns role based on existing admins', async () => {
+    const suffix = Date.now().toString();
+    const adminCountBefore = await prisma.user.count({
+      where: { role: 'ADMIN', isSimulated: false },
+    });
+
+    const response = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      username: `auth_reg_${suffix}`,
+      password: 'password123',
+      displayName: '注册测试用户',
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toHaveProperty('token');
+    expect(response.body.user.username).toBe(`auth_reg_${suffix}`);
+    expect(response.body.user.role).toBe(adminCountBefore === 0 ? 'ADMIN' : 'USER');
+  });
+
+  it('POST /api/v1/auth/login and GET /api/v1/auth/me return the current user', async () => {
+    const suffix = `${Date.now()}_me`;
+    const username = `auth_me_${suffix}`;
+    const password = 'password123';
+
+    const registerResponse = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      username,
+      password,
+      displayName: '登录测试用户',
+    });
+
+    expect(registerResponse.status).toBe(201);
+
+    const loginResponse = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
+      username,
+      password,
+    });
+
+    expect(loginResponse.status).toBe(201);
+    expect(loginResponse.body).toHaveProperty('token');
+
+    const meResponse = await request(app.getHttpServer())
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`);
+
+    expect(meResponse.status).toBe(200);
+    expect(meResponse.body.username).toBe(username);
+    expect(meResponse.body).not.toHaveProperty('passwordHash');
+  });
+
+  it('POST /api/v1/projects/:slug/like rejects unauthenticated requests', async () => {
+    const projectList = await request(app.getHttpServer()).get('/api/v1/projects?page=1&pageSize=1');
+
+    expect(projectList.status).toBe(200);
+    expect(projectList.body.items.length).toBeGreaterThan(0);
+
+    const project = projectList.body.items[0] as { slug: string };
+    const response = await request(app.getHttpServer()).post(`/api/v1/projects/${project.slug}/like`).send({
+      active: true,
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it('authenticated users can like and favorite project / idea block / incubation', async () => {
+    const suffix = `${Date.now()}_engagement`;
+    const username = `auth_engage_${suffix}`;
+    const password = 'password123';
+
+    const registerResponse = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      username,
+      password,
+      displayName: '互动测试用户',
+    });
+
+    expect(registerResponse.status).toBe(201);
+
+    const token = registerResponse.body.token as string;
+    const userId = registerResponse.body.user.id as string;
+
+    const [projectList, blockList, incubationList] = await Promise.all([
+      request(app.getHttpServer()).get('/api/v1/projects?page=1&pageSize=1'),
+      request(app.getHttpServer()).get('/api/v1/idea-blocks?page=1&pageSize=1'),
+      request(app.getHttpServer()).get('/api/v1/incubations?page=1&pageSize=1'),
+    ]);
+
+    expect(projectList.status).toBe(200);
+    expect(blockList.status).toBe(200);
+    expect(incubationList.status).toBe(200);
+
+    const project = projectList.body.items[0] as { slug: string };
+    const block = blockList.body.items[0] as { slug: string };
+    const incubation = incubationList.body.items[0] as { slug: string };
+
+    const [projectLike, projectFavorite, blockLike, blockFavorite, incubationLike, incubationFavorite] = await Promise.all([
+      request(app.getHttpServer())
+        .post(`/api/v1/projects/${project.slug}/like`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ active: true }),
+      request(app.getHttpServer())
+        .post(`/api/v1/projects/${project.slug}/favorite`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ active: true }),
+      request(app.getHttpServer())
+        .post(`/api/v1/idea-blocks/${block.slug}/like`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ active: true }),
+      request(app.getHttpServer())
+        .post(`/api/v1/idea-blocks/${block.slug}/favorite`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ active: true }),
+      request(app.getHttpServer())
+        .post(`/api/v1/incubations/${incubation.slug}/like`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ active: true }),
+      request(app.getHttpServer())
+        .post(`/api/v1/incubations/${incubation.slug}/favorite`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ active: true }),
+    ]);
+
+    expect(projectLike.status).toBe(201);
+    expect(projectLike.body.viewerHasLiked).toBe(true);
+    expect(projectFavorite.status).toBe(201);
+    expect(projectFavorite.body.viewerHasFavorited).toBe(true);
+
+    expect(blockLike.status).toBe(201);
+    expect(blockLike.body.viewerHasLiked).toBe(true);
+    expect(blockFavorite.status).toBe(201);
+    expect(blockFavorite.body.viewerHasFavorited).toBe(true);
+
+    expect(incubationLike.status).toBe(201);
+    expect(incubationLike.body.viewerHasLiked).toBe(true);
+    expect(incubationFavorite.status).toBe(201);
+    expect(incubationFavorite.body.viewerHasFavorited).toBe(true);
+
+    const [projectDetail, blocksWithViewer, incubationDetail] = await Promise.all([
+      request(app.getHttpServer()).get(`/api/v1/projects/${project.slug}`).set('X-Viewer-Id', userId),
+      request(app.getHttpServer()).get('/api/v1/idea-blocks?page=1&pageSize=5').set('X-Viewer-Id', userId),
+      request(app.getHttpServer()).get(`/api/v1/incubations/${incubation.slug}`).set('X-Viewer-Id', userId),
+    ]);
+
+    expect(projectDetail.status).toBe(200);
+    expect(projectDetail.body.viewerHasLiked).toBe(true);
+    expect(projectDetail.body.viewerHasFavorited).toBe(true);
+
+    const updatedBlock = (blocksWithViewer.body.items as Array<{ slug: string; viewerHasLiked: boolean; viewerHasFavorited: boolean }>).find(
+      (item) => item.slug === block.slug,
+    );
+    expect(updatedBlock).toBeDefined();
+    expect(updatedBlock?.viewerHasLiked).toBe(true);
+    expect(updatedBlock?.viewerHasFavorited).toBe(true);
+
+    expect(incubationDetail.status).toBe(200);
+    expect(incubationDetail.body.viewerHasLiked).toBe(true);
+    expect(incubationDetail.body.viewerHasFavorited).toBe(true);
+  });
+
+  it('GET /api/v1/admin/users rejects unauthenticated requests', async () => {
+    const response = await request(app.getHttpServer()).get('/api/v1/admin/users');
+
+    expect(response.status).toBe(401);
+  });
+
+  it('GET /api/v1/admin/users rejects authenticated non-admin users', async () => {
+    const suffix = `${Date.now()}_user`;
+    const username = `auth_user_${suffix}`;
+    const password = 'password123';
+
+    const registerResponse = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      username,
+      password,
+      displayName: '普通用户',
+    });
+
+    expect(registerResponse.status).toBe(201);
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { username } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { role: 'USER' },
+    });
+
+    const loginResponse = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
+      username,
+      password,
+    });
+
+    expect(loginResponse.status).toBe(201);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/admin/users')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('GET /api/v1/admin/users allows authenticated admins', async () => {
+    const suffix = `${Date.now()}_admin`;
+    const username = `auth_admin_${suffix}`;
+    const password = 'password123';
+
+    const registerResponse = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      username,
+      password,
+      displayName: '管理员用户',
+    });
+
+    expect(registerResponse.status).toBe(201);
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { username } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { role: 'ADMIN' },
+    });
+
+    const loginResponse = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
+      username,
+      password,
+    });
+
+    expect(loginResponse.status).toBe(201);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/admin/users')
+      .set('Authorization', `Bearer ${loginResponse.body.token}`);
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body.items)).toBe(true);
+  });
+
+  it('PATCH /api/v1/admin/comments/:id lets admins update comment content', async () => {
+    const suffix = `${Date.now()}_comment_admin`;
+    const username = `auth_comment_admin_${suffix}`;
+    const password = 'password123';
+
+    const registerResponse = await request(app.getHttpServer()).post('/api/v1/auth/register').send({
+      username,
+      password,
+      displayName: '评论管理员',
+    });
+
+    expect(registerResponse.status).toBe(201);
+
+    const admin = await prisma.user.findUniqueOrThrow({ where: { username } });
+    await prisma.user.update({
+      where: { id: admin.id },
+      data: { role: 'ADMIN' },
+    });
+
+    const loginResponse = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
+      username,
+      password,
+    });
+
+    expect(loginResponse.status).toBe(201);
+
+    const discussion = await prisma.discussion.findFirstOrThrow({
+      include: {
+        comments: {
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
+      },
+    });
+    expect(discussion.comments.length).toBeGreaterThan(0);
+
+    const comment = discussion.comments[0];
+    const nextContent = `管理员已修改评论内容 ${suffix}`;
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/admin/comments/${comment.id}`)
+      .set('Authorization', `Bearer ${loginResponse.body.token}`)
+      .send({ content: nextContent });
+
+    expect(response.status).toBe(200);
+    expect(response.body.content).toBe(nextContent);
+
+    const updated = await prisma.comment.findUniqueOrThrow({ where: { id: comment.id } });
+    expect(updated.content).toBe(nextContent);
   });
 });

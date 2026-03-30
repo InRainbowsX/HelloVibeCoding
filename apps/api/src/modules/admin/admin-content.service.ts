@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ContentStatus, CommentStatus, Prisma } from '@prisma/client';
+import { ContentStatus, CommentStatus, Prisma, PricingModel } from '@prisma/client';
 
 @Injectable()
 export class AdminContentService {
@@ -27,6 +27,13 @@ export class AdminContentService {
         ...(payload.hookAngle !== undefined ? { hookAngle: String(payload.hookAngle) } : {}),
         ...(payload.heatScore !== undefined ? { heatScore: Math.max(0, Math.min(100, Number(payload.heatScore) || 0)) } : {}),
         ...(payload.difficulty !== undefined ? { difficulty: Math.max(1, Math.min(5, Number(payload.difficulty) || 1)) } : {}),
+        ...(payload.pricing !== undefined ? { pricing: this.normalizePricing(payload.pricing) } : {}),
+        ...(payload.channels !== undefined ? { channels: this.stringArray(payload.channels) } : {}),
+        ...(payload.trustSignals !== undefined ? { trustSignals: this.stringArray(payload.trustSignals) } : {}),
+        ...(payload.primaryUrl !== undefined ? { primaryUrl: this.optionalString(payload.primaryUrl) } : {}),
+        ...(payload.primaryLabel !== undefined ? { primaryLabel: this.optionalString(payload.primaryLabel) } : {}),
+        ...(payload.secondaryUrl !== undefined ? { secondaryUrl: this.optionalString(payload.secondaryUrl) } : {}),
+        ...(payload.secondaryLabel !== undefined ? { secondaryLabel: this.optionalString(payload.secondaryLabel) } : {}),
         ...(payload.contentStatus !== undefined ? { contentStatus: payload.contentStatus as ContentStatus } : {}),
       },
       include: {
@@ -169,6 +176,35 @@ export class AdminContentService {
       entityId: id,
       oldValue,
       newValue: JSON.stringify({ status }),
+      reason,
+      adminId,
+    });
+
+    return updated;
+  }
+
+  async updateCommentContent(id: string, content: string, adminId: string, reason?: string) {
+    const comment = await this.prisma.comment.findUnique({ where: { id } });
+    if (!comment) {
+      throw new NotFoundException(`Comment ${id} not found`);
+    }
+
+    const normalizedContent = content.trim();
+    if (!normalizedContent) {
+      throw new BadRequestException('Comment content is required');
+    }
+
+    const updated = await this.prisma.comment.update({
+      where: { id },
+      data: { content: normalizedContent },
+    });
+
+    await this.createAuditLog({
+      action: 'UPDATE_COMMENT_CONTENT',
+      entityType: 'Comment',
+      entityId: id,
+      oldValue: JSON.stringify({ content: comment.content }),
+      newValue: JSON.stringify({ content: normalizedContent }),
       reason,
       adminId,
     });
@@ -343,5 +379,32 @@ export class AdminContentService {
         newValue: data.newValue?.slice(0, 10000),
       },
     });
+  }
+
+  private optionalString(value: unknown) {
+    if (value === undefined || value === null) return null;
+    const normalized = String(value).trim();
+    return normalized.length ? normalized : null;
+  }
+
+  private stringArray(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+  }
+
+  private normalizePricing(value: unknown): PricingModel {
+    switch (String(value || '').toUpperCase()) {
+      case 'PAID':
+        return PricingModel.PAID;
+      case 'FREEMIUM':
+        return PricingModel.FREEMIUM;
+      case 'USAGE_BASED':
+        return PricingModel.USAGE_BASED;
+      case 'FREE':
+      default:
+        return PricingModel.FREE;
+    }
   }
 }

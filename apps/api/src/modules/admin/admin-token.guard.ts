@@ -1,17 +1,19 @@
-import { CanActivate, ExecutionContext, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
+import { AuthService, JwtPayload } from '../auth/auth.service';
 
 export const SKIP_ADMIN_TOKEN_AUTH = 'skipAdminTokenAuth';
 
 @Injectable()
 export class AdminTokenGuard implements CanActivate {
   constructor(
-    private readonly configService: ConfigService,
     private readonly reflector: Reflector,
+    private readonly jwtService: JwtService,
+    private readonly authService: AuthService,
   ) {}
 
-  canActivate(context: ExecutionContext) {
+  async canActivate(context: ExecutionContext) {
     const shouldSkip = this.reflector.getAllAndOverride<boolean>(SKIP_ADMIN_TOKEN_AUTH, [
       context.getHandler(),
       context.getClass(),
@@ -21,19 +23,34 @@ export class AdminTokenGuard implements CanActivate {
       return true;
     }
 
-    const configuredToken = this.configService.get<string>('ADMIN_TOKEN')?.trim();
-    if (!configuredToken) {
-      throw new ServiceUnavailableException('ADMIN_TOKEN is not configured');
+    const request = context.switchToHttp().getRequest<{
+      headers?: Record<string, string | string[] | undefined>;
+      user?: { userId: string; username: string; role: string };
+    }>();
+    const authHeader = request.headers?.authorization;
+    const header = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+    const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
+
+    if (!token) {
+      throw new UnauthorizedException('Admin authentication required');
     }
 
-    const request = context.switchToHttp().getRequest<{ headers?: Record<string, string | string[] | undefined> }>();
-    const headerValue = request.headers?.['x-admin-token'];
-    const providedToken = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+    try {
+      const payload = this.jwtService.verify<JwtPayload>(token);
+      const user = await this.authService.validateUser(payload.sub);
 
-    if (!providedToken || providedToken !== configuredToken) {
+      if (!user || user.role !== 'ADMIN') {
+        throw new UnauthorizedException('Admin role required');
+      }
+
+      request.user = {
+        userId: user.id,
+        username: user.username,
+        role: user.role,
+      };
+      return true;
+    } catch {
       throw new UnauthorizedException('Invalid admin token');
     }
-
-    return true;
   }
 }

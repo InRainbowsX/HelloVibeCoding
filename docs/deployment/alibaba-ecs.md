@@ -80,6 +80,7 @@ PORT=3001
 NODE_ENV=production
 VITE_API_BASE_URL=https://www.hellovibecoding.cn/api/v1
 ADMIN_TOKEN=change-this-admin-token
+JWT_SECRET=change-this-long-random-jwt-secret
 ```
 
 关键点：
@@ -87,6 +88,7 @@ ADMIN_TOKEN=change-this-admin-token
 - `DATABASE_URL` 必须指向 `db:5432`
 - 不要把本地 `.env` 打进 Docker 镜像
 - 前端线上 API 基地址使用正式域名
+- `JWT_SECRET` 是生产环境必填项；未配置时，API 会在启动阶段直接退出
 
 ## 5. Docker Compose 文件
 

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { FormEvent, MouseEvent, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 
 const AdminPage = lazy(() => import('./components/admin').then(m => ({ default: m.AdminPage })));
@@ -6,11 +6,13 @@ import { AuthProvider } from './components/auth/AuthContext';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { UserMenu } from './components/auth/UserMenu';
-import { ArrowUpRight, CheckCircle2, CircleDashed, Flame, Flag, Lightbulb, Menu, MessageCircleMore, MessageSquareDot, PenSquare, QrCode, Sparkles, Target, X } from 'lucide-react';
+import { useAuth } from './components/auth/AuthContext';
+import { ArrowUpRight, Bookmark, CheckCircle2, CircleDashed, Flame, Flag, Heart, Lightbulb, Menu, MessageCircleMore, MessageSquareDot, PenSquare, QrCode, Sparkles, Target, X } from 'lucide-react';
 import {
   createIncubation,
   createDiscussion,
   getDiscussions,
+  getIdeaBlockDetail,
   getIdeaBlocks,
   getIncubationDetail,
   getIncubations,
@@ -18,12 +20,33 @@ import {
   getProjects,
   recommendIdeaProducts,
   DiscussionThread,
+  DiscussionComment,
   IdeaBlock,
+  IdeaBlockDetail,
   IdeaProductRecommendation,
   IncubationListItem,
   ProjectDetail,
   ProjectListItem,
+  toggleIdeaBlockFavorite,
+  toggleIdeaBlockLike,
+  toggleIncubationFavorite,
+  toggleIncubationLike,
+  toggleProjectFavorite,
+  toggleProjectLike,
 } from './lib/api';
+import { consumeAuthFlashMessage } from './lib/auth-flash';
+import { consumeContentFlashMessage, setContentFlashMessage } from './lib/content-flash';
+import { getIncubationsIndexPath, getProjectsIndexPath } from './lib/content-routes';
+import { getDiscussionEmptyStateCopy, getDiscussionSectionTitle } from './lib/discussion-copy';
+import { removeCommentFromDiscussions, updateCommentContentInDiscussions } from './lib/discussion-comments';
+import { getIdeaBlockDetailCta, getIdeaBlockDetailPath, getIdeaBlocksIndexPath } from './lib/idea-block-routes';
+import { createIdeaBlock, deleteApp, deleteComment as deleteAdminComment, deleteIdeaBlock, deleteIncubation, updateAppContent, updateCommentContent, updateIdeaBlock, updateIncubation } from './lib/admin-api';
+import { buildIncubationUpdatePayload, createIncubationEditDraft, type IncubationEditDraft } from './lib/incubation-inline-editor';
+import { buildIdeaBlockUpdatePayload, createIdeaBlockEditDraft, type IdeaBlockEditDraft } from './lib/idea-inline-editor';
+import { buildProjectIdeaBlockCreatePayload, createProjectIdeaBlockDraft, type ProjectIdeaBlockCreateDraft } from './lib/project-idea-block-create';
+import { buildProjectContentUpdatePayload, createProjectEditDraft, type ProjectEditDraft } from './lib/project-inline-editor';
+import { loadProjectsPageState, saveProjectsPageState, type ProjectsSortMode } from './lib/projects-page-state';
+import { useUnsavedChangesWarning } from './lib/use-unsaved-changes-warning';
 
 type ProjectDiscussion = DiscussionThread & {
   target?: { slug: string; name: string } | null;
@@ -170,6 +193,31 @@ function BrandMark() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [flashMessage, setFlashMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const message = consumeAuthFlashMessage() || consumeContentFlashMessage();
+    if (message) setFlashMessage(message);
+
+    function handleContentFlash(event: Event) {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail) setFlashMessage(detail);
+    }
+
+    window.addEventListener('content-flash', handleContentFlash as EventListener);
+    return () => {
+      window.removeEventListener('content-flash', handleContentFlash as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!flashMessage) return;
+    const timer = window.setTimeout(() => {
+      setFlashMessage(null);
+    }, 2400);
+
+    return () => window.clearTimeout(timer);
+  }, [flashMessage]);
 
   return (
     <div className="min-h-screen bg-[color:var(--color-brand-bg)] text-[color:var(--color-brand-ink)]">
@@ -183,7 +231,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden items-center gap-5 md:flex">
+          <nav className="hidden flex-wrap items-center gap-4 sm:flex">
             {[
               ['/', '首页'],
               ['/projects', '作品库'],
@@ -209,13 +257,13 @@ function Shell({ children }: { children: React.ReactNode }) {
           </nav>
 
           {/* User Menu */}
-          <div className="hidden md:block">
+          <div className="hidden sm:block">
             <UserMenu />
           </div>
 
           {/* Mobile Menu Toggle */}
           <button
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-[color:var(--color-brand-muted)] transition-colors hover:bg-black/5 hover:text-[color:var(--color-brand-ink)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-brand-accent)] md:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-[color:var(--color-brand-muted)] transition-colors hover:bg-black/5 hover:text-[color:var(--color-brand-ink)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-brand-accent)] sm:hidden"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label={isMobileMenuOpen ? '关闭菜单' : '打开菜单'}
           >
@@ -225,7 +273,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
         {/* Mobile Navigation */}
         {isMobileMenuOpen && (
-          <nav className="border-t border-[color:var(--color-brand-line)] bg-[color:var(--color-brand-surface)] px-6 py-4 md:hidden">
+          <nav className="border-t border-[color:var(--color-brand-line)] bg-[color:var(--color-brand-surface)] px-6 py-4 sm:hidden">
             <div className="flex flex-col gap-1">
               {[
                 ['/', '首页'],
@@ -255,6 +303,21 @@ function Shell({ children }: { children: React.ReactNode }) {
           </nav>
         )}
       </header>
+
+      {flashMessage ? (
+        <div className="border-b border-[color:var(--color-brand-line)] bg-[color:var(--color-brand-surface)]">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-3 text-sm lg:px-10">
+            <span>{flashMessage}</span>
+            <button
+              type="button"
+              onClick={() => setFlashMessage(null)}
+              className="text-[color:var(--color-brand-muted)] transition hover:text-[color:var(--color-brand-ink)]"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <main className="mx-auto max-w-5xl px-6 py-14 lg:px-10">{children}</main>
       <SiteFooter />
@@ -369,13 +432,48 @@ const PROJECT_ICON_MAP: Record<string, string> = {
   'cat-language': '/assets/projects/cat-language/icon.jpg',
   'watch-browser': '/assets/projects/watch-browser/icon.jpg',
   'plate-simulator': '/assets/projects/plate-simulator/icon.jpg',
+  'jigsaw-planet': '/assets/projects/jigsaw-planet/icon.png',
+  'board-game-collection': '/assets/projects/board-game-collection/icon.png',
+  'the-useless-web': '/assets/projects/the-useless-web/icon.ico',
+  'dverso-laundry': '/assets/projects/dverso-laundry/icon.png',
+  checkiday: '/assets/projects/checkiday/icon.png',
+  'yume-ly': '/assets/projects/yume-ly/icon.png',
+  'radio-garden': '/assets/projects/radio-garden/icon.png',
+  windowswap: '/assets/projects/windowswap/icon.png',
+  patatap: '/assets/projects/patatap/icon.png',
+  'quick-draw': '/assets/projects/quick-draw/icon.png',
+  zoomquilt: '/assets/projects/zoomquilt/icon.ico',
+  'a-soft-murmur': '/assets/projects/a-soft-murmur/icon.png',
+  'earth-fm': '/assets/projects/earth-fm/icon.png',
+  'click-the-red-button': '/assets/projects/click-the-red-button/icon.ico',
+  'dark-patterns': '/assets/projects/dark-patterns/icon.png',
+  'the-auction-game': '/assets/projects/the-auction-game/icon.png',
+  wikitok: '/assets/projects/wikitok/icon.ico',
+  'infinite-craft': '/assets/projects/infinite-craft/icon.png',
+  'city-guesser': '/assets/projects/city-guesser/icon.png',
+  'the-password-game': '/assets/projects/the-password-game/icon.png',
+  'little-alchemy-2': '/assets/projects/little-alchemy-2/icon.png',
+  'human-benchmark': '/assets/projects/human-benchmark/icon.png',
+  'drive-and-listen': '/assets/projects/drive-and-listen/icon.png',
+  wikitrivia: '/assets/projects/wikitrivia/icon.png',
+  mapcrunch: '/assets/projects/mapcrunch/icon.ico',
+  myfridgefood: '/assets/projects/myfridgefood/icon.ico',
+  what3words: '/assets/projects/what3words/icon.ico',
+  'have-i-been-pwned': '/assets/projects/have-i-been-pwned/icon.png',
+  musclewiki: '/assets/projects/musclewiki/icon.png',
+  radiooooo: '/assets/projects/radiooooo/icon.ico',
+  'skribbl-io': '/assets/projects/skribbl-io/icon.png',
 };
 
 function ProjectIcon({ slug, name, className = 'h-13 w-13' }: { slug: string; name: string; className?: string }) {
   const iconUrl = PROJECT_ICON_MAP[slug];
 
   if (iconUrl) {
-    return <img alt={`${name} icon`} className={`${className} shrink-0 rounded-[18px] border border-[color:var(--color-brand-line)] object-cover`} src={iconUrl} />;
+    return (
+      <div className={`flex ${className} shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-[color:var(--color-brand-line)] bg-white p-2`}>
+        <img alt={`${name} icon`} className="h-full w-full object-contain" src={iconUrl} />
+      </div>
+    );
   }
 
   return (
@@ -385,33 +483,135 @@ function ProjectIcon({ slug, name, className = 'h-13 w-13' }: { slug: string; na
   );
 }
 
-function DirectoryProjectRow({ project }: { project: ProjectListItem }) {
+function EngagementButtons({
+  likeCount,
+  favoriteCount,
+  viewerHasLiked,
+  viewerHasFavorited,
+  onLike,
+  onFavorite,
+  compact = false,
+}: {
+  likeCount: number;
+  favoriteCount: number;
+  viewerHasLiked: boolean;
+  viewerHasFavorited: boolean;
+  onLike: (active: boolean) => Promise<void>;
+  onFavorite: (active: boolean) => Promise<void>;
+  compact?: boolean;
+}) {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const [state, setState] = useState({
+    likeCount,
+    favoriteCount,
+    viewerHasLiked,
+    viewerHasFavorited,
+  });
+
+  useEffect(() => {
+    setState({
+      likeCount,
+      favoriteCount,
+      viewerHasLiked,
+      viewerHasFavorited,
+    });
+  }, [favoriteCount, likeCount, viewerHasFavorited, viewerHasLiked]);
+
+  async function handleToggle(
+    event: MouseEvent<HTMLButtonElement>,
+    kind: 'like' | 'favorite',
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+
+    const nextActive = kind === 'like' ? !state.viewerHasLiked : !state.viewerHasFavorited;
+
+    setState((current) => ({
+      ...current,
+      likeCount: kind === 'like' ? current.likeCount + (nextActive ? 1 : -1) : current.likeCount,
+      favoriteCount: kind === 'favorite' ? current.favoriteCount + (nextActive ? 1 : -1) : current.favoriteCount,
+      viewerHasLiked: kind === 'like' ? nextActive : current.viewerHasLiked,
+      viewerHasFavorited: kind === 'favorite' ? nextActive : current.viewerHasFavorited,
+    }));
+
+    try {
+      if (kind === 'like') {
+        await onLike(nextActive);
+      } else {
+        await onFavorite(nextActive);
+      }
+    } catch {
+      setState({
+        likeCount,
+        favoriteCount,
+        viewerHasLiked,
+        viewerHasFavorited,
+      });
+    }
+  }
+
+  const buttonClass = compact
+    ? 'flex items-center gap-1.5 border border-[color:var(--color-brand-line)] px-2 py-1 text-xs text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]'
+    : 'flex items-center gap-2 border border-[color:var(--color-brand-line)] px-3 py-2 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]';
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={(event) => void handleToggle(event, 'like')}
+        className={`${buttonClass} ${state.viewerHasLiked ? 'border-[#d46a6a] text-[#b53c3c]' : ''}`}
+      >
+        <Heart className={`h-4 w-4 ${state.viewerHasLiked ? 'fill-current' : ''}`} />
+        <span>{state.likeCount}</span>
+      </button>
+      <button
+        type="button"
+        onClick={(event) => void handleToggle(event, 'favorite')}
+        className={`${buttonClass} ${state.viewerHasFavorited ? 'border-[color:var(--color-brand-accent)] text-[color:var(--color-brand-accent)]' : ''}`}
+      >
+        <Bookmark className={`h-4 w-4 ${state.viewerHasFavorited ? 'fill-current' : ''}`} />
+        <span>{state.favoriteCount}</span>
+      </button>
+    </div>
+  );
+}
+
+function DirectoryProjectRow({ project, onOpenDetail }: { project: ProjectListItem; onOpenDetail?: () => void }) {
   return (
     <Link
       to={`/projects/${project.slug}`}
-      className="block border-b border-[color:var(--color-brand-line)] px-4 py-4 transition hover:bg-black/[0.015]"
+      onClick={onOpenDetail}
+      className="group block border-b border-[color:var(--color-brand-line)] px-4 py-5 transition hover:bg-[#fbfbf8]"
     >
       <div className="flex gap-4">
-        <ProjectIcon slug={project.slug} name={project.name} />
+        <div className="shrink-0">
+          <div className="flex h-18 w-18 items-center justify-center overflow-hidden rounded-[22px] border border-[color:var(--color-brand-line)] bg-[#f7f5ef]">
+            <ProjectIcon slug={project.slug} name={project.name} className="h-12 w-12 rounded-[14px] border-0 object-contain" />
+          </div>
+        </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <h3 className="truncate text-[24px] leading-none">{project.name}</h3>
-                <span className="truncate text-base text-[color:var(--color-brand-muted)]">{project.tagline}</span>
-              </div>
-              <p className="mt-2 line-clamp-1 text-sm leading-6 text-[color:var(--color-brand-muted)]">
+              <h3 className="truncate text-[30px] leading-none tracking-[-0.045em] text-[color:var(--color-brand-ink)]">
+                {project.name}
+              </h3>
+              <p className="mt-3 max-w-3xl text-[16px] leading-7 text-[color:var(--color-brand-muted)]">
                 {project.tagline}
               </p>
             </div>
-
-            <div className="shrink-0 rounded-full bg-[#6ea6eb] px-2.5 py-1 text-xs font-medium text-white">
-              {project.discussionCount}
+            <div className="hidden shrink-0 text-sm text-[color:var(--color-brand-muted)] md:block">
+              查看详情
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[color:var(--color-brand-muted)]">
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[color:var(--color-brand-muted)]">
             <span>{project.category}</span>
             <span>•</span>
             <span>{getPricingLabel(project.pricing)}</span>
@@ -419,13 +619,27 @@ function DirectoryProjectRow({ project }: { project: ProjectListItem }) {
             <span>{formatRelativeDate(project.createdAt)}</span>
             <span>•</span>
             <span>热度 {project.heatScore}</span>
+            <span>•</span>
+            <span>{project.discussionCount} 讨论</span>
           </div>
-        </div>
 
-        <div className="hidden w-24 shrink-0 items-end justify-between self-stretch text-right text-sm text-[color:var(--color-brand-muted)] lg:flex lg:flex-col">
-          <span>{project.ideaBlockCount} 点子</span>
-          <span>{project.incubationCount} 孵化</span>
-          <span>{project.roomCount} 房间</span>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <EngagementButtons
+              compact
+              likeCount={project.likeCount}
+              favoriteCount={project.favoriteCount}
+              viewerHasLiked={project.viewerHasLiked}
+              viewerHasFavorited={project.viewerHasFavorited}
+              onLike={(active) => toggleProjectLike(project.slug, active).then(() => undefined)}
+              onFavorite={(active) => toggleProjectFavorite(project.slug, active).then(() => undefined)}
+            />
+            <div className="h-4 w-px bg-[color:var(--color-brand-line)]" />
+            <div className="flex flex-wrap items-center gap-4 text-sm text-[color:var(--color-brand-muted)]">
+              <span>{project.ideaBlockCount} 点子</span>
+              <span>{project.incubationCount} 孵化</span>
+              <span>{project.roomCount} 房间</span>
+            </div>
+          </div>
         </div>
       </div>
     </Link>
@@ -434,7 +648,7 @@ function DirectoryProjectRow({ project }: { project: ProjectListItem }) {
 
 function IdeaBlockDirectoryRow({ block }: { block: IdeaBlock }) {
   return (
-    <div className="border-b border-[color:var(--color-brand-line)] px-4 py-4">
+    <Link to={getIdeaBlockDetailPath(block.slug)} className="block border-b border-[color:var(--color-brand-line)] px-4 py-4 transition hover:bg-[#fcfdff]">
       <div className="flex items-start gap-4">
         <div className="flex h-13 w-13 shrink-0 items-center justify-center border border-[color:var(--color-brand-line)] bg-[#f8f8f8] font-mono text-sm uppercase text-[color:var(--color-brand-muted)]">
           {getIdeaBlockTypeLabel(block.blockType).slice(0, 2)}
@@ -464,9 +678,20 @@ function IdeaBlockDirectoryRow({ block }: { block: IdeaBlock }) {
               </>
             ) : null}
           </div>
+          <div className="mt-3">
+            <EngagementButtons
+              compact
+              likeCount={block.likeCount}
+              favoriteCount={block.favoriteCount}
+              viewerHasLiked={block.viewerHasLiked}
+              viewerHasFavorited={block.viewerHasFavorited}
+              onLike={(active) => toggleIdeaBlockLike(block.slug, active).then(() => undefined)}
+              onFavorite={(active) => toggleIdeaBlockFavorite(block.slug, active).then(() => undefined)}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -518,6 +743,17 @@ function IncubationDirectoryRow({ incubation }: { incubation: IncubationListItem
             <span>{incubation.discussionCount} 条讨论</span>
             <span>•</span>
             <span>{incubation.roomCount} 个房间</span>
+          </div>
+          <div className="mt-3">
+            <EngagementButtons
+              compact
+              likeCount={incubation.likeCount}
+              favoriteCount={incubation.favoriteCount}
+              viewerHasLiked={incubation.viewerHasLiked}
+              viewerHasFavorited={incubation.viewerHasFavorited}
+              onLike={(active) => toggleIncubationLike(incubation.slug, active).then(() => undefined)}
+              onFavorite={(active) => toggleIncubationFavorite(incubation.slug, active).then(() => undefined)}
+            />
           </div>
         </div>
       </div>
@@ -572,13 +808,135 @@ function DiscussionCard({ discussion }: { discussion: ProjectDiscussion }) {
   );
 }
 
+function EditableCommentCard({
+  comment,
+  canEdit,
+  onUpdated,
+  onDeleted,
+}: {
+  comment: DiscussionComment;
+  canEdit: boolean;
+  onUpdated: (commentId: string, content: string) => void;
+  onDeleted: (commentId: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(comment.content);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(comment.content);
+  }, [comment.content]);
+
+  async function handleSave() {
+    const nextContent = draft.trim();
+    if (!nextContent || nextContent === comment.content) {
+      setIsEditing(false);
+      setDraft(comment.content);
+      setError(null);
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateCommentContent(comment.id, nextContent);
+      onUpdated(comment.id, updated.content);
+      setContentFlashMessage('评论已保存');
+      setIsEditing(false);
+    } catch {
+      setError('评论保存失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    if (!window.confirm('确认删除这条评论？删除后不会保留。')) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteAdminComment(comment.id);
+      onDeleted(comment.id);
+      setContentFlashMessage('评论已删除');
+    } catch {
+      setError('评论删除失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-black/[0.03] px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="editorial-meta">{comment.authorName}</div>
+        {canEdit ? (
+          <div className="flex items-center gap-3 text-xs text-[color:var(--color-brand-muted)]">
+            {isEditing ? (
+              <>
+                <button type="button" disabled={busy} onClick={() => {
+                  setIsEditing(false);
+                  setDraft(comment.content);
+                  setError(null);
+                }} className="transition hover:text-[color:var(--color-brand-ink)] disabled:opacity-50">
+                  取消
+                </button>
+                <button type="button" disabled={busy} onClick={() => { void handleSave(); }} className="transition hover:text-[color:var(--color-brand-ink)] disabled:opacity-50">
+                  {busy ? '保存中…' : '保存'}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" disabled={busy} onClick={() => {
+                  setIsEditing(true);
+                  setDraft(comment.content);
+                  setError(null);
+                }} className="transition hover:text-[color:var(--color-brand-ink)] disabled:opacity-50">
+                  编辑
+                </button>
+                <button type="button" disabled={busy} onClick={(event) => { void handleDelete(event); }} className="transition hover:text-[#9a3f22] disabled:opacity-50">
+                  删除
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
+      </div>
+      {isEditing ? (
+        <textarea
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          className="mt-2 min-h-24 w-full border border-[color:var(--color-brand-line)] bg-white px-3 py-2 text-sm leading-6 text-[color:var(--color-brand-muted)] outline-none"
+        />
+      ) : (
+        <p className="mt-2 text-sm leading-6 text-[color:var(--color-brand-muted)]">{comment.content}</p>
+      )}
+      {error ? <div className="mt-2 text-xs text-[#9a3f22]">{error}</div> : null}
+    </div>
+  );
+}
+
 function IdeaBlockCard({ block }: { block: IdeaBlock }) {
   return (
-    <Surface className="p-5">
+    <Link to={getIdeaBlockDetailPath(block.slug)} className="block">
+      <Surface className="p-5 transition hover:border-[color:var(--color-brand-accent)] hover:bg-[#fcfdff]">
       <div className="editorial-meta">{getIdeaBlockTypeLabel(block.blockType)}</div>
       <h3 className="mt-3 text-2xl leading-tight">{block.title}</h3>
       <p className="mt-3 text-sm leading-7 text-[color:var(--color-brand-muted)]">{block.summary}</p>
       {block.noveltyNote ? <p className="mt-4 border-l-2 border-[color:var(--color-brand-line)] pl-4 text-sm leading-7 text-[color:var(--color-brand-ink)]">{block.noveltyNote}</p> : null}
+      <div className="mt-4">
+        <EngagementButtons
+          compact
+          likeCount={block.likeCount}
+          favoriteCount={block.favoriteCount}
+          viewerHasLiked={block.viewerHasLiked}
+          viewerHasFavorited={block.viewerHasFavorited}
+          onLike={(active) => toggleIdeaBlockLike(block.slug, active).then(() => undefined)}
+          onFavorite={(active) => toggleIdeaBlockFavorite(block.slug, active).then(() => undefined)}
+        />
+      </div>
       <div className="mt-4 flex flex-wrap gap-2">
         {block.tags.map((tag) => (
           <span key={tag} className="border border-[color:var(--color-brand-line)] px-3 py-1 text-xs text-[color:var(--color-brand-muted)]">
@@ -586,7 +944,8 @@ function IdeaBlockCard({ block }: { block: IdeaBlock }) {
           </span>
         ))}
       </div>
-    </Surface>
+      </Surface>
+    </Link>
   );
 }
 
@@ -600,6 +959,17 @@ function IncubationCard({ incubation }: { incubation: IncubationListItem }) {
         </div>
         <h3 className="mt-3 text-xl font-medium">{incubation.title}</h3>
         <p className="mt-2 text-sm leading-6 text-black/60">{incubation.oneLiner}</p>
+        <div className="mt-4">
+          <EngagementButtons
+            compact
+            likeCount={incubation.likeCount}
+            favoriteCount={incubation.favoriteCount}
+            viewerHasLiked={incubation.viewerHasLiked}
+            viewerHasFavorited={incubation.viewerHasFavorited}
+            onLike={(active) => toggleIncubationLike(incubation.slug, active).then(() => undefined)}
+            onFavorite={(active) => toggleIncubationFavorite(incubation.slug, active).then(() => undefined)}
+          />
+        </div>
         <div className="mt-5 flex flex-wrap gap-2">
           <MetricPill label="点子" value={incubation.blockCount} />
           <MetricPill label="讨论" value={incubation.discussionCount} />
@@ -641,12 +1011,12 @@ function HomePage() {
         <Surface className="p-7">
           <div className="editorial-kicker">HelloVibeCoding</div>
           <h1 className="mt-4 max-w-4xl text-4xl leading-[1.1] sm:text-5xl lg:text-6xl">
-            这些产品方向，
+            没有新的idea？
             <br />
-            都是从真实 App 里抠出来的。
+            试试从其他产品中找到灵感
           </h1>
           <p className="mt-5 max-w-3xl text-base leading-8 text-[color:var(--color-brand-muted)]">
-            先扒市面上真实的上线产品，看它们哪些设计真的管用。把能复用的点子挑出来，两三个一组合，说不定就能做出新东西。
+            收集有趣的作品，并把有趣的作品拆解重组，持续探索更有趣的作品
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link to="/projects" className="border border-[color:var(--color-brand-ink)] bg-[color:var(--color-brand-ink)] px-5 py-3 text-sm text-[color:var(--color-brand-surface)] transition-all duration-200 hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-brand-accent)] focus-visible:ring-offset-2">
@@ -659,9 +1029,9 @@ function HomePage() {
           <div className="mt-8 border-t border-[color:var(--color-brand-line)] pt-6">
             <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_52px_minmax(0,1fr)_52px_minmax(0,1fr)] lg:items-center">
               {[
-                ['作品', `${projects.data.total} 个真实样本`, '扒真实的上线产品，看它们为什么能成。', 'bg-[#eef3ff] text-[#4b6cb7]'],
-                ['点子', `${ideaBlocks.data.total} 个共享机制`, '把好用的设计挑出来，大家都能拿去用。', 'bg-[#eef8f1] text-[#2f7d57]'],
-                ['孵化', `${incubations.data.total} 个进行中方向`, '挑几个点子拼一拼，看看能不能长出新产品。', 'bg-[#fff4e8] text-[#b36a1f]'],
+                ['作品', `${projects.data.total} 个真实样本`, '收集有趣的作品', 'bg-[#eef3ff] text-[#4b6cb7]'],
+                ['点子', `${ideaBlocks.data.total} 个共享机制`, '将作品拆解成点子', 'bg-[#eef8f1] text-[#2f7d57]'],
+                ['孵化', `${incubations.data.total} 个进行中方向`, '用点子碰撞出新的想法', 'bg-[#fff4e8] text-[#b36a1f]'],
               ].flatMap((item, index, array) =>
                 index < array.length - 1
                   ? [
@@ -791,9 +1161,47 @@ function HomePage() {
 }
 
 function ProjectsPage() {
+  const persistedState = loadProjectsPageState();
   const { data, loading } = useAsyncData(() => getProjects(), []);
-  const [activeCategory, setActiveCategory] = useState('全部');
-  const [sortMode, setSortMode] = useState<'latest' | 'heat' | 'discussion' | 'incubation'>('latest');
+  const [activeCategory, setActiveCategory] = useState(persistedState?.activeCategory ?? '全部');
+  const [sortMode, setSortMode] = useState<ProjectsSortMode>(persistedState?.sortMode ?? 'latest');
+  const restoredScrollRef = useRef(false);
+
+  function persistProjectsPageState(scrollY = window.scrollY) {
+    saveProjectsPageState({
+      activeCategory,
+      sortMode,
+      scrollY,
+    });
+  }
+
+  useEffect(() => {
+    persistProjectsPageState();
+  }, [activeCategory, sortMode]);
+
+  useEffect(() => {
+    const handlePageHide = () => persistProjectsPageState();
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      persistProjectsPageState();
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [activeCategory, sortMode]);
+
+  useEffect(() => {
+    if (loading || !data) return;
+    if (restoredScrollRef.current) return;
+    if (!persistedState) return;
+
+    restoredScrollRef.current = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: persistedState.scrollY, behavior: 'auto' });
+      });
+    });
+  }, [data, loading, persistedState]);
+
   if (loading || !data) return <LoadingState />;
 
   const categoryStats = data.items.reduce<Record<string, number>>((accumulator, project) => {
@@ -873,7 +1281,7 @@ function ProjectsPage() {
 
           <Surface className="overflow-hidden">
             {filteredProjects.map((project) => (
-              <DirectoryProjectRow key={project.id} project={project} />
+              <DirectoryProjectRow key={project.id} project={project} onOpenDetail={() => persistProjectsPageState()} />
             ))}
           </Surface>
         </div>
@@ -1175,14 +1583,22 @@ function IdeaBlocksPage() {
                   </div>
                 </div>
                 <div className="mt-auto pt-5">
-                  <button
-                    type="button"
-                    onClick={() => appendBlock(block)}
-                    disabled={selected.length >= 3 && !selected.some((item) => item.id === block.id)}
-                    className="w-full border border-[color:var(--color-brand-ink)] bg-[color:var(--color-brand-ink)] px-3 py-2 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {selected.some((item) => item.id === block.id) ? '已加入' : selected.length >= 3 ? '最多 3 个' : '加入组合'}
-                  </button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Link
+                      to={getIdeaBlockDetailPath(block.slug)}
+                      className="flex items-center justify-center border border-[color:var(--color-brand-line)] px-3 py-2 text-sm text-[color:var(--color-brand-ink)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                    >
+                      查看详情
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => appendBlock(block)}
+                      disabled={selected.length >= 3 && !selected.some((item) => item.id === block.id)}
+                      className="w-full border border-[color:var(--color-brand-ink)] bg-[color:var(--color-brand-ink)] px-3 py-2 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {selected.some((item) => item.id === block.id) ? '已加入' : selected.length >= 3 ? '最多 3 个' : '加入组合'}
+                    </button>
+                  </div>
                 </div>
               </Surface>
             </div>
@@ -1324,6 +1740,308 @@ function IdeaBlocksPage() {
           </div>
         </Surface>
       ) : null}
+    </div>
+  );
+}
+
+function IdeaBlockDetailPage() {
+  const { slug = '' } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { data, loading, setData } = useAsyncData(() => getIdeaBlockDetail(slug), [slug]);
+  const [isEditingContent, setIsEditingContent] = useState(false);
+  const [editDraft, setEditDraft] = useState<IdeaBlockEditDraft | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSavingContent, setIsSavingContent] = useState(false);
+  const [isDeletingContent, setIsDeletingContent] = useState(false);
+  const isDirty = !!data && isEditingContent && Object.keys(buildIdeaBlockUpdatePayload(data, editDraft ?? createIdeaBlockEditDraft(data))).length > 0;
+  useUnsavedChangesWarning(isDirty);
+
+  if (loading || !data) return <LoadingState />;
+
+  const ideaBlock = data;
+  const canEditContent = user?.role === 'ADMIN';
+  const activeDraft = editDraft ?? createIdeaBlockEditDraft(ideaBlock);
+
+  function startEditingContent() {
+    setEditDraft(createIdeaBlockEditDraft(ideaBlock));
+    setEditError(null);
+    setIsEditingContent(true);
+  }
+
+  function cancelEditingContent() {
+    setIsEditingContent(false);
+    setEditDraft(null);
+    setEditError(null);
+  }
+
+  async function saveEditingContent() {
+    if (!canEditContent) return;
+    const payload = buildIdeaBlockUpdatePayload(ideaBlock, activeDraft);
+
+    if (Object.keys(payload).length === 0) {
+      setIsEditingContent(false);
+      setEditDraft(null);
+      setEditError(null);
+      return;
+    }
+
+    setIsSavingContent(true);
+    setEditError(null);
+    try {
+      await updateIdeaBlock(ideaBlock.id, payload);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              ...(payload.title !== undefined ? { title: payload.title } : {}),
+              ...(payload.summary !== undefined ? { summary: payload.summary } : {}),
+              ...(payload.blockType !== undefined ? { blockType: payload.blockType } : {}),
+              ...(payload.tags !== undefined ? { tags: payload.tags } : {}),
+              ...(payload.noveltyNote !== undefined ? { noveltyNote: payload.noveltyNote } : {}),
+            }
+          : current,
+      );
+      setIsEditingContent(false);
+      setEditDraft(null);
+      setContentFlashMessage('点子内容已保存');
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '保存失败');
+    } finally {
+      setIsSavingContent(false);
+    }
+  }
+
+  async function handleDeleteContent() {
+    if (!canEditContent || isDeletingContent) return;
+    const confirmed = window.confirm(`确认删除点子“${ideaBlock.title}”？删除后不会保留。`);
+    if (!confirmed) return;
+
+    setIsDeletingContent(true);
+    setEditError(null);
+    try {
+      await deleteIdeaBlock(ideaBlock.id);
+      setIsEditingContent(false);
+      setEditDraft(null);
+      setContentFlashMessage('点子已删除');
+      navigate(getIdeaBlocksIndexPath());
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '删除失败');
+      setIsDeletingContent(false);
+    }
+  }
+
+  return (
+    <div className="-mt-10">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+        <div className="min-w-0 space-y-4">
+          <Surface className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Link to="/idea-blocks" className="editorial-meta editorial-link">
+                点子实验室
+              </Link>
+              {canEditContent ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {isEditingContent ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={saveEditingContent}
+                        disabled={isSavingContent}
+                        className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-brand-ink)] bg-[color:var(--color-brand-ink)] px-4 py-2 text-sm text-white transition hover:opacity-90 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {isSavingContent ? '保存中' : '保存内容'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteContent()}
+                        disabled={isSavingContent || isDeletingContent}
+                        className="rounded-full border border-[#d7b9b9] px-4 py-2 text-sm text-[#9a3f22] transition hover:border-[#c88989] hover:text-[#8a2e12] disabled:opacity-50"
+                      >
+                        {isDeletingContent ? '删除中' : '删除点子'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditingContent}
+                        disabled={isSavingContent}
+                        className="rounded-full border border-[color:var(--color-brand-line)] px-4 py-2 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                      >
+                        取消
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startEditingContent}
+                      className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-brand-line)] px-4 py-2 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                    >
+                      <PenSquare className="h-4 w-4" />
+                      编辑内容
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-[color:var(--color-brand-muted)]">
+              <span className="rounded-full border border-[color:var(--color-brand-line)] px-3 py-1.5">
+                {getIdeaBlockTypeLabel(ideaBlock.blockType)}
+              </span>
+              <span>{ideaBlock.sourceProjects.length} 个来源作品</span>
+              <span>•</span>
+              <span>{ideaBlock.incubations.length} 个孵化方向</span>
+            </div>
+
+            {isEditingContent ? (
+              <input
+                value={activeDraft.title}
+                onChange={(event) => setEditDraft({ ...activeDraft, title: event.target.value })}
+                className="mt-4 w-full border-b border-[color:var(--color-brand-line)] bg-transparent pb-2 text-[clamp(2rem,4.6vw,4rem)] leading-[1] tracking-[-0.04em] outline-none"
+              />
+            ) : (
+              <h1 className="mt-4 text-[clamp(2rem,4.6vw,4rem)] leading-[1] tracking-[-0.04em]">{ideaBlock.title}</h1>
+            )}
+
+            {isEditingContent ? (
+              <textarea
+                value={activeDraft.summary}
+                onChange={(event) => setEditDraft({ ...activeDraft, summary: event.target.value })}
+                className="mt-5 min-h-32 w-full border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-base leading-8 text-[color:var(--color-brand-muted)] outline-none"
+              />
+            ) : (
+              <p className="mt-5 max-w-3xl text-base leading-8 text-[color:var(--color-brand-muted)]">{ideaBlock.summary}</p>
+            )}
+
+            <div className="mt-6 flex flex-wrap items-start justify-between gap-4 border-t border-[color:var(--color-brand-line)] pt-5">
+              <EngagementButtons
+                likeCount={ideaBlock.likeCount}
+                favoriteCount={ideaBlock.favoriteCount}
+                viewerHasLiked={ideaBlock.viewerHasLiked}
+                viewerHasFavorited={ideaBlock.viewerHasFavorited}
+                onLike={(active) => toggleIdeaBlockLike(ideaBlock.slug, active).then(() => undefined)}
+                onFavorite={(active) => toggleIdeaBlockFavorite(ideaBlock.slug, active).then(() => undefined)}
+              />
+              {editError ? <div className="text-sm text-[#9a3f22]">{editError}</div> : null}
+            </div>
+          </Surface>
+
+          <Surface className="p-5">
+            <div className="editorial-kicker">点子内容</div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="text-sm text-[color:var(--color-brand-muted)]">点子类型</div>
+                {isEditingContent ? (
+                  <select
+                    value={activeDraft.blockType}
+                    onChange={(event) =>
+                      setEditDraft({
+                        ...activeDraft,
+                        blockType: event.target.value as IdeaBlockEditDraft['blockType'],
+                      })
+                    }
+                    className="w-full border border-[color:var(--color-brand-line)] bg-white px-3 py-3 text-sm outline-none"
+                  >
+                    <option value="FEATURE">功能</option>
+                    <option value="WORKFLOW">流程</option>
+                    <option value="CHANNEL">渠道</option>
+                    <option value="FORMULA">公式</option>
+                  </select>
+                ) : (
+                  <div className="border border-[color:var(--color-brand-line)] px-4 py-3 text-sm text-[color:var(--color-brand-ink)]">
+                    {getIdeaBlockTypeLabel(ideaBlock.blockType)}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm text-[color:var(--color-brand-muted)]">标签</div>
+                {isEditingContent ? (
+                  <input
+                    value={activeDraft.tagsText}
+                    onChange={(event) => setEditDraft({ ...activeDraft, tagsText: event.target.value })}
+                    className="w-full border border-[color:var(--color-brand-line)] bg-white px-3 py-3 text-sm outline-none"
+                    placeholder="用逗号分隔"
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2 border border-[color:var(--color-brand-line)] px-4 py-3">
+                    {ideaBlock.tags.length ? (
+                      ideaBlock.tags.map((tag) => (
+                        <span key={tag} className="rounded-full border border-[color:var(--color-brand-line)] px-3 py-1 text-xs text-[color:var(--color-brand-muted)]">
+                          {renderIdeaTagLabel(tag)}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-[color:var(--color-brand-muted)]">暂未设置</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 border-t border-[color:var(--color-brand-line)] pt-4">
+              <div className="text-sm text-[color:var(--color-brand-muted)]">新奇说明</div>
+              {isEditingContent ? (
+                <textarea
+                  value={activeDraft.noveltyNote}
+                  onChange={(event) => setEditDraft({ ...activeDraft, noveltyNote: event.target.value })}
+                  className="mt-2 min-h-24 w-full border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-sm leading-7 outline-none"
+                />
+              ) : ideaBlock.noveltyNote ? (
+                <p className="mt-3 border-l-2 border-[color:var(--color-brand-line)] pl-4 text-sm leading-7 text-[color:var(--color-brand-ink)]">
+                  {ideaBlock.noveltyNote}
+                </p>
+              ) : (
+                <p className="mt-3 text-sm text-[color:var(--color-brand-muted)]">暂未填写</p>
+              )}
+            </div>
+          </Surface>
+        </div>
+
+        <div className="space-y-4 lg:sticky lg:top-24">
+          <Surface className="p-5">
+            <div className="editorial-kicker">来源作品</div>
+            <div className="mt-4 space-y-2">
+              {ideaBlock.sourceProjects.length ? (
+                ideaBlock.sourceProjects.map((project) => (
+                  <Link
+                    key={project.slug}
+                    to={`/projects/${project.slug}`}
+                    className="block border border-[color:var(--color-brand-line)] px-3 py-3 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-ink)]"
+                  >
+                    {project.name}
+                  </Link>
+                ))
+              ) : (
+                <div className="border border-dashed border-[color:var(--color-brand-line)] px-3 py-4 text-sm text-[color:var(--color-brand-muted)]">
+                  暂无挂靠作品
+                </div>
+              )}
+            </div>
+          </Surface>
+
+          <Surface className="p-5">
+            <div className="editorial-kicker">关联孵化</div>
+            <div className="mt-4 space-y-2">
+              {ideaBlock.incubations.length ? (
+                ideaBlock.incubations.map((incubation) => (
+                  <Link
+                    key={incubation.slug}
+                    to={`/incubations/${incubation.slug}`}
+                    className="block border border-[color:var(--color-brand-line)] px-3 py-3 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-ink)]"
+                  >
+                    {incubation.title}
+                  </Link>
+                ))
+              ) : (
+                <div className="border border-dashed border-[color:var(--color-brand-line)] px-3 py-4 text-sm text-[color:var(--color-brand-muted)]">
+                  还没有挂到孵化方向
+                </div>
+              )}
+            </div>
+          </Surface>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1499,14 +2217,25 @@ function IncubationsPage() {
 
 function IncubationDetailPage() {
   const { slug = '' } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { data, loading, setData } = useAsyncData(() => getIncubationDetail(slug), [slug]);
   const [discussionTitle, setDiscussionTitle] = useState('');
   const [discussionContent, setDiscussionContent] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEditingContent, setIsEditingContent] = useState(false);
+  const [editDraft, setEditDraft] = useState<IncubationEditDraft | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSavingContent, setIsSavingContent] = useState(false);
+  const [isDeletingContent, setIsDeletingContent] = useState(false);
+  const isDirty = !!data && isEditingContent && Object.keys(buildIncubationUpdatePayload(data, editDraft ?? createIncubationEditDraft(data))).length > 0;
+  useUnsavedChangesWarning(isDirty);
 
   if (loading || !data) return <LoadingState />;
   const incubationData = data;
+  const canEditContent = user?.role === 'ADMIN';
+  const activeDraft = editDraft ?? createIncubationEditDraft(incubationData);
   const milestoneItems = getIncubationMilestones({
     blockCount: incubationData.blocks.length,
     discussionCount: incubationData.discussions.length,
@@ -1518,6 +2247,28 @@ function IncubationDetailPage() {
     roomCount: incubationData.rooms.length,
   });
   const totalComments = incubationData.discussions.reduce((sum, discussion) => sum + (discussion.commentCount || discussion.comments.length), 0);
+
+  function handleCommentUpdated(commentId: string, content: string) {
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            discussions: updateCommentContentInDiscussions(current.discussions, commentId, content),
+          }
+        : current,
+    );
+  }
+
+  function handleCommentDeleted(commentId: string) {
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            discussions: removeCommentFromDiscussions(current.discussions, commentId),
+          }
+        : current,
+    );
+  }
 
   async function handleCreateDiscussion(event: FormEvent) {
     event.preventDefault();
@@ -1544,32 +2295,206 @@ function IncubationDetailPage() {
     }
   }
 
+  function startEditingContent() {
+    setEditDraft(createIncubationEditDraft(incubationData));
+    setEditError(null);
+    setIsEditingContent(true);
+  }
+
+  function cancelEditingContent() {
+    setIsEditingContent(false);
+    setEditDraft(null);
+    setEditError(null);
+  }
+
+  async function saveEditingContent() {
+    if (!canEditContent) return;
+    const payload = buildIncubationUpdatePayload(incubationData, activeDraft);
+
+    if (Object.keys(payload).length === 0) {
+      setIsEditingContent(false);
+      setEditDraft(null);
+      setEditError(null);
+      return;
+    }
+
+    setIsSavingContent(true);
+    setEditError(null);
+    try {
+      await updateIncubation(incubationData.id, payload);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              ...(payload.title !== undefined ? { title: payload.title } : {}),
+              ...(payload.oneLiner !== undefined ? { oneLiner: payload.oneLiner } : {}),
+              ...(payload.status !== undefined ? { status: payload.status } : {}),
+              ...(payload.tags !== undefined ? { tags: payload.tags } : {}),
+            }
+          : current,
+      );
+      setIsEditingContent(false);
+      setEditDraft(null);
+      setContentFlashMessage('孵化内容已保存');
+    } catch (requestError) {
+      setEditError(requestError instanceof Error ? requestError.message : '保存失败');
+    } finally {
+      setIsSavingContent(false);
+    }
+  }
+
+  async function handleDeleteContent() {
+    if (!canEditContent || isDeletingContent) return;
+    const confirmed = window.confirm(`确认删除孵化方向“${incubationData.title}”？删除后不会保留。`);
+    if (!confirmed) return;
+
+    setIsDeletingContent(true);
+    setEditError(null);
+    try {
+      await deleteIncubation(incubationData.id);
+      setIsEditingContent(false);
+      setEditDraft(null);
+      setContentFlashMessage('孵化方向已删除');
+      navigate(getIncubationsIndexPath());
+    } catch (requestError) {
+      setEditError(requestError instanceof Error ? requestError.message : '删除失败');
+      setIsDeletingContent(false);
+    }
+  }
+
   return (
     <div className="-mt-10">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
         <div className="min-w-0 space-y-3">
           <Surface className="p-5">
-            <Link to="/incubations" className="editorial-meta editorial-link">
-              Idea 孵化区
-            </Link>
-            <h1 className="mt-3 text-4xl leading-tight sm:text-5xl">{incubationData.title}</h1>
-            <p className="mt-4 text-base leading-7 text-[color:var(--color-brand-muted)]">{incubationData.oneLiner}</p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Link to="/incubations" className="editorial-meta editorial-link">
+                Idea 孵化区
+              </Link>
+              {canEditContent ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {isEditingContent ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={saveEditingContent}
+                        disabled={isSavingContent}
+                        className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-brand-ink)] bg-[color:var(--color-brand-ink)] px-4 py-2 text-sm text-white transition hover:opacity-90 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {isSavingContent ? '保存中' : '保存内容'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteContent()}
+                        disabled={isSavingContent || isDeletingContent}
+                        className="rounded-full border border-[#d7b9b9] px-4 py-2 text-sm text-[#9a3f22] transition hover:border-[#c88989] hover:text-[#8a2e12] disabled:opacity-50"
+                      >
+                        {isDeletingContent ? '删除中' : '删除方向'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditingContent}
+                        disabled={isSavingContent}
+                        className="rounded-full border border-[color:var(--color-brand-line)] px-4 py-2 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                      >
+                        取消
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startEditingContent}
+                      className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-brand-line)] px-4 py-2 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                    >
+                      <PenSquare className="h-4 w-4" />
+                      编辑内容
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            {isEditingContent ? (
+              <input
+                value={activeDraft.title}
+                onChange={(event) => setEditDraft({ ...activeDraft, title: event.target.value })}
+                className="mt-3 w-full border-b border-[color:var(--color-brand-line)] bg-transparent pb-2 text-4xl leading-tight sm:text-5xl outline-none"
+              />
+            ) : (
+              <h1 className="mt-3 text-4xl leading-tight sm:text-5xl">{incubationData.title}</h1>
+            )}
+            {isEditingContent ? (
+              <textarea
+                value={activeDraft.oneLiner}
+                onChange={(event) => setEditDraft({ ...activeDraft, oneLiner: event.target.value })}
+                className="mt-4 min-h-24 w-full border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-base leading-7 outline-none"
+              />
+            ) : (
+              <p className="mt-4 text-base leading-7 text-[color:var(--color-brand-muted)]">{incubationData.oneLiner}</p>
+            )}
+            <div className="mt-4">
+              <EngagementButtons
+                likeCount={incubationData.likeCount}
+                favoriteCount={incubationData.favoriteCount}
+                viewerHasLiked={incubationData.viewerHasLiked}
+                viewerHasFavorited={incubationData.viewerHasFavorited}
+                onLike={(active) => toggleIncubationLike(incubationData.slug, active).then(() => undefined)}
+                onFavorite={(active) => toggleIncubationFavorite(incubationData.slug, active).then(() => undefined)}
+              />
+            </div>
             <div className="mt-5 flex flex-wrap gap-2">
-              <MetricPill label="状态" value={getIncubationStatusLabel(incubationData.status)} />
+              {isEditingContent ? (
+                <div className="flex flex-wrap gap-3">
+                  <select
+                    value={activeDraft.status}
+                    onChange={(event) =>
+                      setEditDraft({
+                        ...activeDraft,
+                        status: event.target.value as IncubationEditDraft['status'],
+                      })
+                    }
+                    className="border border-[color:var(--color-brand-line)] bg-white px-3 py-2 text-sm outline-none"
+                  >
+                    <option value="OPEN">开放中</option>
+                    <option value="VALIDATING">验证中</option>
+                    <option value="BUILDING">制作中</option>
+                    <option value="ARCHIVED">已归档</option>
+                  </select>
+                  <input
+                    value={activeDraft.tagsText}
+                    onChange={(event) => setEditDraft({ ...activeDraft, tagsText: event.target.value })}
+                    placeholder="标签，用逗号分隔"
+                    className="min-w-[240px] border border-[color:var(--color-brand-line)] bg-white px-3 py-2 text-sm outline-none"
+                  />
+                </div>
+              ) : (
+                <MetricPill label="状态" value={getIncubationStatusLabel(incubationData.status)} />
+              )}
               <MetricPill label="来源作品" value={incubationData.sourceProjects.length} />
               <MetricPill label="点子" value={incubationData.blocks.length} />
               <MetricPill label="讨论" value={incubationData.discussions.length} />
             </div>
+            {isEditingContent ? (
+              <div className="mt-3 text-sm text-[color:var(--color-brand-muted)]">
+                当前标签：{activeDraft.tagsText || '暂未设置'}
+              </div>
+            ) : incubationData.tags?.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {incubationData.tags.map((tag) => (
+                  <span key={tag} className="rounded-full border border-[color:var(--color-brand-line)] px-3 py-1 text-xs text-[color:var(--color-brand-muted)]">
+                    {renderIdeaTagLabel(tag)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {editError ? <div className="mt-3 text-sm text-[#9a3f22]">{editError}</div> : null}
           </Surface>
 
           <Surface className="p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="editorial-kicker">里程碑记录</div>
-                <div className="mt-2 text-2xl leading-tight">让方向往前走，而不是只停在讨论区</div>
-                <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--color-brand-muted)]">
-                  当前进度 {progress.completed}/{progress.total}。这里记录这个方向已经做了哪些尝试，还卡在哪一步。
-                </p>
+                <div className="mt-2 text-2xl leading-tight">里程碑记录</div>
               </div>
               <div className="grid grid-cols-3 gap-2 text-center text-sm">
                 <div className="min-w-[86px] border border-[color:var(--color-brand-line)] px-3 py-3">
@@ -1633,7 +2558,7 @@ function IncubationDetailPage() {
           </Surface>
 
           <Surface className="p-5">
-            <div className="text-3xl leading-none">评论</div>
+            <div className="text-3xl leading-none">{getDiscussionSectionTitle()}</div>
             <div className="mt-5 flex gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1f2430] text-lg text-white">人</div>
               <div className="min-w-0 flex-1 space-y-4">
@@ -1650,9 +2575,7 @@ function IncubationDetailPage() {
                   placeholder="写下你对这个孵化方向的判断、疑问、尝试方案或风险。"
                 />
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm text-[color:var(--color-brand-muted)]">
-                    当前孵化页也保留评论区，方便围绕一个方向持续记录进展。
-                  </div>
+                  <div />
                   <button
                     className="border border-[color:var(--color-brand-ink)] bg-[color:var(--color-brand-ink)] px-5 py-2.5 text-sm text-white transition hover:opacity-90 disabled:opacity-60"
                     disabled={busy || !discussionTitle.trim() || !discussionContent.trim()}
@@ -1670,7 +2593,7 @@ function IncubationDetailPage() {
             </div>
 
             <div className="mt-8 flex items-center justify-between gap-4">
-              <div className="text-2xl">{incubationData.discussions.length} 条评论串</div>
+              <div className="text-2xl">{incubationData.discussions.length} 条评论</div>
               <div className="flex overflow-hidden border border-[color:var(--color-brand-line)] text-sm">
                 <button className="bg-[#4f8de8] px-4 py-2 text-white" type="button">最新</button>
                 <button className="px-4 py-2 text-[color:var(--color-brand-muted)]" type="button">热门</button>
@@ -1693,11 +2616,14 @@ function IncubationDetailPage() {
                         <div className="mt-2 text-sm text-[color:var(--color-brand-muted)]">话题：{discussion.title}</div>
                         {discussion.summary ? <p className="mt-3 text-base leading-7 text-[color:var(--color-brand-ink)]">{discussion.summary}</p> : null}
                         <div className="mt-4 space-y-3">
-                          {discussion.comments.map((comment) => (
-                            <div key={comment.id} className="bg-black/[0.03] px-4 py-3">
-                              <div className="editorial-meta">{comment.authorName}</div>
-                              <p className="mt-2 text-sm leading-6 text-[color:var(--color-brand-muted)]">{comment.content}</p>
-                            </div>
+                        {discussion.comments.map((comment) => (
+                            <EditableCommentCard
+                              key={comment.id}
+                              comment={comment}
+                              canEdit={canEditContent}
+                              onUpdated={handleCommentUpdated}
+                              onDeleted={handleCommentDeleted}
+                            />
                           ))}
                         </div>
                       </div>
@@ -1706,7 +2632,7 @@ function IncubationDetailPage() {
                 ))
               ) : (
                 <div className="border border-dashed border-[color:var(--color-brand-line)] px-4 py-6 text-sm text-[color:var(--color-brand-muted)]">
-                  还没有评论，适合你来发第一条问题。
+                  {getDiscussionEmptyStateCopy()}
                 </div>
               )}
             </div>
@@ -1714,14 +2640,6 @@ function IncubationDetailPage() {
         </div>
 
         <div className="space-y-3 lg:sticky lg:top-24">
-          <Surface className="p-5">
-            <div className="editorial-kicker">当前判断</div>
-            <div className="mt-4 space-y-4 text-sm leading-7 text-[color:var(--color-brand-muted)]">
-              <p>这是一个由多个机制组合出来的方向，不是单条讨论，也不是已经上线的作品。</p>
-              <p>优先看来源作品和评论区，判断它现在缺的是用户反馈还是具体执行。</p>
-            </div>
-          </Surface>
-
           <Surface className="p-5">
             <div className="editorial-kicker">当前目标</div>
             <div className="mt-4 space-y-4 text-sm leading-7 text-[color:var(--color-brand-muted)]">
@@ -1737,6 +2655,10 @@ function IncubationDetailPage() {
                   discussionCount: incubationData.discussions.length,
                   blockCount: incubationData.blocks.length,
                   roomCount: incubationData.rooms.length,
+                  likeCount: incubationData.likeCount,
+                  favoriteCount: incubationData.favoriteCount,
+                  viewerHasLiked: incubationData.viewerHasLiked,
+                  viewerHasFavorited: incubationData.viewerHasFavorited,
                 })}</span>
               </div>
               <div className="flex items-start gap-3">
@@ -1755,13 +2677,6 @@ function IncubationDetailPage() {
                 </Link>
               ))}
             </div>
-          </Surface>
-
-          <Surface className="p-5">
-            <div className="editorial-kicker">房间状态</div>
-            <p className="mt-4 text-sm leading-7 text-[color:var(--color-brand-muted)]">
-              房间前期暂不开放。当前阶段先用评论区记录讨论和结论，等方向更稳定后再开放协作聊天。
-            </p>
           </Surface>
         </div>
       </div>
@@ -1808,16 +2723,54 @@ function RoomDetailPage() {
 
 function ProjectDetailPage() {
   const { slug = '' } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { data, loading, setData } = useAsyncData(() => getProjectDetail(slug), [slug]);
   const [discussionTitle, setDiscussionTitle] = useState('');
   const [discussionContent, setDiscussionContent] = useState('');
   const [selectedIdeaBlockId, setSelectedIdeaBlockId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [isEditingContent, setIsEditingContent] = useState(false);
+  const [editDraft, setEditDraft] = useState<ProjectEditDraft | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSavingContent, setIsSavingContent] = useState(false);
+  const [isDeletingContent, setIsDeletingContent] = useState(false);
+  const [isCreatingIdeaBlock, setIsCreatingIdeaBlock] = useState(false);
+  const [ideaBlockDraft, setIdeaBlockDraft] = useState<ProjectIdeaBlockCreateDraft>(() => createProjectIdeaBlockDraft());
+  const [ideaBlockCreateError, setIdeaBlockCreateError] = useState<string | null>(null);
+  const [isSavingIdeaBlock, setIsSavingIdeaBlock] = useState(false);
   const screenshotRailRef = useRef<HTMLDivElement | null>(null);
+  const isDirty = !!data && isEditingContent && Object.keys(buildProjectContentUpdatePayload(data, editDraft ?? createProjectEditDraft(data))).length > 0;
+  useUnsavedChangesWarning(isDirty);
 
   if (loading || !data) return <LoadingState />;
-  const selectedIdeaBlock = data.ideaBlocks.find((block) => block.id === selectedIdeaBlockId) ?? data.ideaBlocks[0] ?? null;
+  const project = data;
+  const canEditContent = user?.role === 'ADMIN';
+  const selectedIdeaBlock = project.ideaBlocks.find((block) => block.id === selectedIdeaBlockId) ?? project.ideaBlocks[0] ?? null;
+  const activeDraft = editDraft ?? createProjectEditDraft(project);
+
+  function handleCommentUpdated(commentId: string, content: string) {
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            discussions: updateCommentContentInDiscussions(current.discussions, commentId, content),
+          }
+        : current,
+    );
+  }
+
+  function handleCommentDeleted(commentId: string) {
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            discussions: removeCommentFromDiscussions(current.discussions, commentId),
+          }
+        : current,
+    );
+  }
 
   async function handleDiscussionSubmit(event: FormEvent) {
     event.preventDefault();
@@ -1863,90 +2816,357 @@ function ProjectDetailPage() {
     });
   }
 
+  function startEditingContent() {
+    setEditDraft(createProjectEditDraft(project));
+    setEditError(null);
+    setIsEditingContent(true);
+  }
+
+  function cancelEditingContent() {
+    setIsEditingContent(false);
+    setEditDraft(null);
+    setEditError(null);
+  }
+
+  async function saveEditingContent() {
+    if (!canEditContent) return;
+    const payload = buildProjectContentUpdatePayload(project, activeDraft);
+
+    if (Object.keys(payload).length === 0) {
+      setIsEditingContent(false);
+      setEditDraft(null);
+      setEditError(null);
+      return;
+    }
+
+    setIsSavingContent(true);
+    setEditError(null);
+    try {
+      await updateAppContent(project.id, payload);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              ...(payload.name !== undefined ? { name: payload.name } : {}),
+              ...(payload.tagline !== undefined ? { tagline: payload.tagline } : {}),
+              ...(payload.category !== undefined ? { category: payload.category } : {}),
+              overview: {
+                ...current.overview,
+                ...(payload.saveTimeLabel !== undefined ? { saveTimeLabel: payload.saveTimeLabel } : {}),
+                ...(payload.targetPersona !== undefined ? { targetPersona: payload.targetPersona } : {}),
+                ...(payload.hookAngle !== undefined ? { hookAngle: payload.hookAngle } : {}),
+              },
+              ...(payload.heatScore !== undefined ? { heatScore: payload.heatScore } : {}),
+            }
+          : current,
+      );
+      setIsEditingContent(false);
+      setEditDraft(null);
+      setContentFlashMessage('作品内容已保存');
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '保存失败');
+    } finally {
+      setIsSavingContent(false);
+    }
+  }
+
+  async function handleDeleteContent() {
+    if (!canEditContent || isDeletingContent) return;
+    const confirmed = window.confirm(`确认删除作品“${project.name}”？删除后不会保留。`);
+    if (!confirmed) return;
+
+    setIsDeletingContent(true);
+    setEditError(null);
+    try {
+      await deleteApp(project.id);
+      setIsEditingContent(false);
+      setEditDraft(null);
+      setContentFlashMessage('作品已删除');
+      navigate(getProjectsIndexPath());
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '删除失败');
+      setIsDeletingContent(false);
+    }
+  }
+
+  function startCreatingIdeaBlock() {
+    setIdeaBlockDraft(createProjectIdeaBlockDraft());
+    setIdeaBlockCreateError(null);
+    setIsCreatingIdeaBlock(true);
+  }
+
+  function cancelCreatingIdeaBlock() {
+    setIdeaBlockDraft(createProjectIdeaBlockDraft());
+    setIdeaBlockCreateError(null);
+    setIsCreatingIdeaBlock(false);
+  }
+
+  async function saveIdeaBlock() {
+    if (!canEditContent || isSavingIdeaBlock) return;
+
+    const payload = buildProjectIdeaBlockCreatePayload(ideaBlockDraft, {
+      id: project.id,
+      slug: project.slug,
+    });
+
+    if (!payload.title || !payload.summary) {
+      setIdeaBlockCreateError('点子标题和摘要都要填。');
+      return;
+    }
+
+    setIsSavingIdeaBlock(true);
+    setIdeaBlockCreateError(null);
+    try {
+      const created = await createIdeaBlock(payload);
+      const nextIdeaBlock: IdeaBlock = {
+        id: created.id,
+        slug: created.slug,
+        title: created.title,
+        summary: created.summary,
+        blockType: created.blockType,
+        tags: created.tags,
+        noveltyNote: created.noveltyNote,
+        sourceProjects: [{ slug: project.slug, name: project.name }],
+        incubationCount: 0,
+        likeCount: 0,
+        favoriteCount: 0,
+        viewerHasLiked: false,
+        viewerHasFavorited: false,
+      };
+
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              ideaBlocks: [nextIdeaBlock, ...current.ideaBlocks],
+              overview: {
+                ...current.overview,
+                metrics: {
+                  ...current.overview.metrics,
+                  ideaBlockCount: current.overview.metrics.ideaBlockCount + 1,
+                },
+              },
+            }
+          : current,
+      );
+      setSelectedIdeaBlockId(created.id);
+      setIdeaBlockDraft(createProjectIdeaBlockDraft());
+      setIsCreatingIdeaBlock(false);
+      setContentFlashMessage('点子已新增');
+    } catch (error) {
+      setIdeaBlockCreateError(error instanceof Error ? error.message : '新增失败');
+    } finally {
+      setIsSavingIdeaBlock(false);
+    }
+  }
+
   return (
     <div className="-mt-10">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)] lg:items-start">
         <div className="min-w-0 space-y-3">
           <Surface className="p-5">
-            <div className="flex items-start justify-between gap-6">
-              <div className="flex min-w-0 gap-4">
-                <ProjectIcon slug={data.slug} name={data.name} className="h-22 w-22" />
-                <div className="min-w-0">
+            <div className="grid gap-6 lg:grid-cols-[88px_minmax(0,1fr)] lg:items-start">
+              <div className="shrink-0">
+                <ProjectIcon slug={data.slug} name={data.name} className="h-[88px] w-[88px]" />
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <Link to="/projects" className="editorial-meta editorial-link">
                     作品库
                   </Link>
-                  <h1 className="mt-2 text-4xl leading-tight sm:text-5xl">{data.name}</h1>
-                  <p className="mt-3 text-base leading-7 text-[color:var(--color-brand-muted)]">{data.tagline}</p>
+                  {canEditContent ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isEditingContent ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={saveEditingContent}
+                            disabled={isSavingContent}
+                            className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-brand-ink)] bg-[color:var(--color-brand-ink)] px-4 py-2 text-sm text-white transition hover:opacity-90 disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            {isSavingContent ? '保存中' : '保存内容'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteContent()}
+                            disabled={isSavingContent || isDeletingContent}
+                            className="rounded-full border border-[#d7b9b9] px-4 py-2 text-sm text-[#9a3f22] transition hover:border-[#c88989] hover:text-[#8a2e12] disabled:opacity-50"
+                          >
+                            {isDeletingContent ? '删除中' : '删除作品'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditingContent}
+                            disabled={isSavingContent}
+                            className="rounded-full border border-[color:var(--color-brand-line)] px-4 py-2 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                          >
+                            取消
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={startEditingContent}
+                          className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-brand-line)] px-4 py-2 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                        >
+                          <PenSquare className="h-4 w-4" />
+                          编辑内容
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-              <div className="hidden shrink-0 border-l border-[color:var(--color-brand-line)] pl-5 lg:block">
-                <div className="text-sm text-[color:var(--color-brand-muted)]">研究评分</div>
-                <div className="mt-2 text-5xl leading-none">{Math.min(10, Math.max(6, Math.round(data.heatScore / 10) + 2))}.0</div>
-                <div className="mt-2 text-sm text-[color:var(--color-brand-accent)]">{data.discussions.length} 个话题</div>
+
+                {isEditingContent ? (
+                  <input
+                    value={activeDraft.name}
+                    onChange={(event) => setEditDraft({ ...activeDraft, name: event.target.value })}
+                    className="mt-2 w-full max-w-3xl border-b border-[color:var(--color-brand-line)] bg-transparent pb-2 text-[clamp(2.4rem,5.2vw,4.5rem)] leading-[0.96] tracking-[-0.05em] outline-none"
+                  />
+                ) : (
+                  <h1 className="mt-2 max-w-3xl text-[clamp(2.4rem,5.2vw,4.5rem)] leading-[0.96] tracking-[-0.05em]">
+                    {data.name}
+                  </h1>
+                )}
+
+                {isEditingContent ? (
+                  <textarea
+                    value={activeDraft.tagline}
+                    onChange={(event) => setEditDraft({ ...activeDraft, tagline: event.target.value })}
+                    className="mt-4 min-h-24 w-full max-w-3xl border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-[17px] leading-8 text-[color:var(--color-brand-muted)] outline-none"
+                  />
+                ) : (
+                  <p className="mt-4 max-w-3xl text-[17px] leading-8 text-[color:var(--color-brand-muted)]">{data.tagline}</p>
+                )}
+
+                <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[15px] text-[color:var(--color-brand-muted)]">
+                  {isEditingContent ? (
+                    <input
+                      value={activeDraft.category}
+                      onChange={(event) => setEditDraft({ ...activeDraft, category: event.target.value })}
+                      className="min-w-32 border-b border-[color:var(--color-brand-line)] bg-transparent pb-1 text-[15px] outline-none"
+                    />
+                  ) : (
+                    <span>{data.category}</span>
+                  )}
+                  <span>•</span>
+                  <span>{getPricingLabel(data.pricing)}</span>
+                </div>
+
+                {editError ? (
+                  <p className="mt-4 text-sm text-red-600">{editError}</p>
+                ) : null}
+
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                  <EngagementButtons
+                    likeCount={data.likeCount}
+                    favoriteCount={data.favoriteCount}
+                    viewerHasLiked={data.viewerHasLiked}
+                    viewerHasFavorited={data.viewerHasFavorited}
+                    onLike={(active) => toggleProjectLike(data.slug, active).then(() => undefined)}
+                    onFavorite={(active) => toggleProjectFavorite(data.slug, active).then(() => undefined)}
+                  />
+                  {data.entryLinks.map((link) => (
+                    <a
+                      key={`${link.label}-${link.url}`}
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-brand-line)] px-4 py-2.5 text-sm text-[color:var(--color-brand-ink)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                    >
+                      <span>{link.label}</span>
+                      <ArrowUpRight className="h-4 w-4" />
+                    </a>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="mt-6 grid gap-3 border-t border-[color:var(--color-brand-line)] pt-5 sm:grid-cols-5">
-              <div>
-                <div className="text-3xl">{data.heatScore}</div>
-                <div className="mt-1 text-sm text-[color:var(--color-brand-muted)]">热度</div>
-              </div>
-              <div>
-                <div className="text-3xl">{data.overview.metrics.discussionCount}</div>
-                <div className="mt-1 text-sm text-[color:var(--color-brand-muted)]">讨论</div>
-              </div>
-              <div>
-                <div className="text-3xl">{data.overview.metrics.ideaBlockCount}</div>
-                <div className="mt-1 text-sm text-[color:var(--color-brand-muted)]">点子</div>
-              </div>
-              <div>
-                <div className="text-3xl">{data.overview.metrics.incubationCount}</div>
-                <div className="mt-1 text-sm text-[color:var(--color-brand-muted)]">孵化</div>
-              </div>
-              <div>
-                <div className="text-3xl">{data.overview.metrics.roomCount}</div>
-                <div className="mt-1 text-sm text-[color:var(--color-brand-muted)]">房间</div>
-              </div>
+            <div className="mt-6 grid gap-px border-t border-[color:var(--color-brand-line)] bg-[color:var(--color-brand-line)] pt-5 sm:grid-cols-5">
+              {[
+                ['研究评分', isEditingContent ? activeDraft.researchScore : (project.heatScore / 10).toFixed(1)],
+                ['讨论', data.overview.metrics.discussionCount],
+                ['点子', data.overview.metrics.ideaBlockCount],
+                ['孵化', data.overview.metrics.incubationCount],
+                ['房间', data.overview.metrics.roomCount],
+              ].map(([label, value]) => (
+                <div key={label} className="bg-[color:var(--color-brand-surface)] px-4 py-3.5">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--color-brand-muted)]">{label}</div>
+                  {label === '研究评分' && isEditingContent ? (
+                    <input
+                      value={activeDraft.researchScore}
+                      onChange={(event) => setEditDraft({ ...activeDraft, researchScore: event.target.value })}
+                      className="mt-2 w-24 border-b border-[color:var(--color-brand-line)] bg-transparent pb-1 text-3xl leading-none tracking-[-0.04em] outline-none"
+                      inputMode="decimal"
+                    />
+                  ) : (
+                    <div className="mt-2 text-3xl leading-none tracking-[-0.04em]">{value}</div>
+                  )}
+                </div>
+              ))}
             </div>
           </Surface>
 
           <Surface className="sticky top-18 z-20 p-3">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <a href="#overview" className="px-3.5 py-2 text-[color:var(--color-brand-muted)] transition hover:bg-black/[0.02] hover:text-[color:var(--color-brand-ink)]">概览</a>
-              <Link to={`/projects/${data.slug}/teardown`} className="px-3.5 py-2 text-[color:var(--color-brand-muted)] transition hover:bg-black/[0.02] hover:text-[color:var(--color-brand-ink)]">拆解</Link>
+              <Link
+                to={`/projects/${data.slug}`}
+                className={`px-3.5 py-2 transition ${
+                  'bg-black/[0.03] text-[color:var(--color-brand-ink)]'
+                }`}
+              >
+                概览
+              </Link>
               <a href="#idea-blocks" className="px-3.5 py-2 text-[color:var(--color-brand-muted)] transition hover:bg-black/[0.02] hover:text-[color:var(--color-brand-ink)]">点子</a>
               <a href="#discussions" className="px-3.5 py-2 text-[color:var(--color-brand-muted)] transition hover:bg-black/[0.02] hover:text-[color:var(--color-brand-ink)]">讨论</a>
             </div>
           </Surface>
 
           <Surface id="overview" className="p-5">
-            <div className="editorial-kicker">概览</div>
-            <p className="mt-4 text-base leading-8 text-[color:var(--color-brand-ink)]">{data.overview.saveTimeLabel}</p>
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
-              <div className="border-l-2 border-[color:var(--color-brand-line)] pl-4 text-sm leading-7 text-[color:var(--color-brand-ink)]">它成立的核心不是记录，而是把动作转成可累计结果。</div>
-              <div className="border-l-2 border-[color:var(--color-brand-line)] pl-4 text-sm leading-7 text-[color:var(--color-brand-ink)]">最强体验瞬间发生在动作完成后即时看到反馈的那一刻。</div>
-              <div className="border-l-2 border-[color:var(--color-brand-line)] pl-4 text-sm leading-7 text-[color:var(--color-brand-ink)]">传播点来自反差和可比较性，而不是工具效率本身。</div>
+            <div className="editorial-kicker">官方介绍</div>
+            <div className="mt-4 space-y-4 text-base leading-8 text-[color:var(--color-brand-ink)]">
+              {isEditingContent ? (
+                <textarea
+                  value={activeDraft.saveTimeLabel}
+                  onChange={(event) => setEditDraft({ ...activeDraft, saveTimeLabel: event.target.value })}
+                  className="min-h-28 w-full border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-base leading-8 outline-none"
+                />
+              ) : (
+                <p>{data.overview.saveTimeLabel}</p>
+              )}
             </div>
             <dl className="mt-6 grid gap-4 border-t border-[color:var(--color-brand-line)] pt-5 md:grid-cols-2">
               <div>
                 <dt className="editorial-meta">核心用户</dt>
-                <dd className="mt-2 text-sm leading-7 text-[color:var(--color-brand-muted)]">{data.overview.targetPersona}</dd>
+                <dd className="mt-2 text-sm leading-7 text-[color:var(--color-brand-muted)]">
+                  {isEditingContent ? (
+                    <textarea
+                      value={activeDraft.targetPersona}
+                      onChange={(event) => setEditDraft({ ...activeDraft, targetPersona: event.target.value })}
+                      className="min-h-24 w-full border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-sm leading-7 text-[color:var(--color-brand-muted)] outline-none"
+                    />
+                  ) : (
+                    data.overview.targetPersona
+                  )}
+                </dd>
               </div>
               <div>
-                <dt className="editorial-meta">钩子角度</dt>
-                <dd className="mt-2 text-sm leading-7 text-[color:var(--color-brand-muted)]">{data.overview.hookAngle}</dd>
+                <dt className="editorial-meta">第一眼记忆点</dt>
+                <dd className="mt-2 text-sm leading-7 text-[color:var(--color-brand-muted)]">
+                  {isEditingContent ? (
+                    <textarea
+                      value={activeDraft.hookAngle}
+                      onChange={(event) => setEditDraft({ ...activeDraft, hookAngle: event.target.value })}
+                      className="min-h-24 w-full border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-sm leading-7 text-[color:var(--color-brand-muted)] outline-none"
+                    />
+                  ) : (
+                    data.overview.hookAngle
+                  )}
+                </dd>
               </div>
             </dl>
-          </Surface>
-
-          <Surface className="p-5">
-            <div className="editorial-kicker">官方介绍</div>
-            <div className="mt-4 space-y-4 text-base leading-8 text-[color:var(--color-brand-ink)]">
-              <p>{data.tagline}</p>
-              <p className="text-[color:var(--color-brand-muted)]">
-                {data.name} 面向 {data.overview.targetPersona}，核心切入点是“{data.overview.hookAngle}”。当前页面展示的是官方信息和站内研究内容的组合视图。
-              </p>
-            </div>
           </Surface>
 
           <Surface className="p-5">
@@ -1983,9 +3203,18 @@ function ProjectDetailPage() {
                       href={item}
                       target="_blank"
                       rel="noreferrer"
-                      className="block w-[240px] shrink-0 snap-start overflow-hidden border border-[color:var(--color-brand-line)] bg-[#f6f6f6] p-3 transition hover:border-[color:var(--color-brand-accent)] md:w-[260px] xl:w-[280px]"
+                      className="group block w-[280px] shrink-0 snap-start overflow-hidden rounded-[18px] border border-[color:var(--color-brand-line)] bg-white transition hover:border-[color:var(--color-brand-accent)] md:w-[320px] xl:w-[360px]"
                     >
-                      <img alt={`${data.name} 截图 ${index + 1}`} className="h-[420px] w-full object-contain" src={item} />
+                      <div className="border-b border-[color:var(--color-brand-line)] bg-[#f6f4ee] px-4 py-3">
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--color-brand-muted)]">
+                          Screen {String(index + 1).padStart(2, '0')}
+                        </div>
+                      </div>
+                      <div className="bg-[#fbfaf7] p-3">
+                        <div className="overflow-hidden rounded-[12px] border border-[color:var(--color-brand-line)] bg-white">
+                          <img alt={`${data.name} 截图 ${index + 1}`} className="h-[240px] w-full object-contain object-top transition duration-300 group-hover:scale-[1.02] md:h-[280px]" src={item} />
+                        </div>
+                      </div>
                     </a>
                   ) : (
                     <a
@@ -2012,7 +3241,87 @@ function ProjectDetailPage() {
           </Surface>
 
           <Surface id="idea-blocks" className="p-5">
-            <div className="editorial-kicker">点子</div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="editorial-kicker">点子</div>
+              {canEditContent ? (
+                isCreatingIdeaBlock ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void saveIdeaBlock()}
+                      disabled={isSavingIdeaBlock}
+                      className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-brand-ink)] bg-[color:var(--color-brand-ink)] px-4 py-2 text-sm text-white transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {isSavingIdeaBlock ? '保存中' : '新增点子'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelCreatingIdeaBlock}
+                      disabled={isSavingIdeaBlock}
+                      className="rounded-full border border-[color:var(--color-brand-line)] px-4 py-2 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                    >
+                      取消
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startCreatingIdeaBlock}
+                    className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-brand-line)] px-4 py-2 text-sm text-[color:var(--color-brand-muted)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]"
+                  >
+                    <PenSquare className="h-4 w-4" />
+                    新增点子
+                  </button>
+                )
+              ) : null}
+            </div>
+            {isCreatingIdeaBlock ? (
+              <div className="mt-4 grid gap-3 border border-[color:var(--color-brand-line)] p-4">
+                <input
+                  value={ideaBlockDraft.title}
+                  onChange={(event) => setIdeaBlockDraft({ ...ideaBlockDraft, title: event.target.value })}
+                  placeholder="点子标题"
+                  className="w-full border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-base outline-none"
+                />
+                <textarea
+                  value={ideaBlockDraft.summary}
+                  onChange={(event) => setIdeaBlockDraft({ ...ideaBlockDraft, summary: event.target.value })}
+                  placeholder="一句话说明这个点子到底在干什么"
+                  className="min-h-24 w-full border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-sm leading-7 outline-none"
+                />
+                <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
+                  <select
+                    value={ideaBlockDraft.blockType}
+                    onChange={(event) =>
+                      setIdeaBlockDraft({
+                        ...ideaBlockDraft,
+                        blockType: event.target.value as ProjectIdeaBlockCreateDraft['blockType'],
+                      })
+                    }
+                    className="border border-[color:var(--color-brand-line)] bg-white px-3 py-3 text-sm outline-none"
+                  >
+                    <option value="FORMULA">公式</option>
+                    <option value="FEATURE">功能</option>
+                    <option value="WORKFLOW">流程</option>
+                    <option value="CHANNEL">渠道</option>
+                  </select>
+                  <input
+                    value={ideaBlockDraft.tagsText}
+                    onChange={(event) => setIdeaBlockDraft({ ...ideaBlockDraft, tagsText: event.target.value })}
+                    placeholder="标签，用逗号分隔"
+                    className="border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-sm outline-none"
+                  />
+                </div>
+                <textarea
+                  value={ideaBlockDraft.noveltyNote}
+                  onChange={(event) => setIdeaBlockDraft({ ...ideaBlockDraft, noveltyNote: event.target.value })}
+                  placeholder="新奇点说明，可选"
+                  className="min-h-20 w-full border border-[color:var(--color-brand-line)] bg-white px-4 py-3 text-sm leading-7 outline-none"
+                />
+                {ideaBlockCreateError ? <p className="text-sm text-red-600">{ideaBlockCreateError}</p> : null}
+              </div>
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-3">
               {data.ideaBlocks.map((block) => (
                 <button
@@ -2031,15 +3340,20 @@ function ProjectDetailPage() {
             </div>
             {selectedIdeaBlock ? (
               <div className="mt-4 border border-[color:var(--color-brand-line)] p-4">
+                {(() => {
+                  const detailCta = getIdeaBlockDetailCta(selectedIdeaBlock.slug);
+                  return (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="editorial-meta">{getIdeaBlockTypeLabel(selectedIdeaBlock.blockType)}</div>
                     <div className="mt-2 text-xl">{selectedIdeaBlock.title}</div>
                   </div>
-                  <Link to="/idea-blocks" className="border border-[color:var(--color-brand-line)] px-3 py-2 text-sm text-[color:var(--color-brand-ink)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]">
-                    进入点子实验室
+                  <Link to={detailCta.to} className="border border-[color:var(--color-brand-line)] px-3 py-2 text-sm text-[color:var(--color-brand-ink)] transition hover:border-[color:var(--color-brand-accent)] hover:text-[color:var(--color-brand-accent)]">
+                    {detailCta.label}
                   </Link>
                 </div>
+                  );
+                })()}
                 <p className="mt-3 text-sm leading-7 text-[color:var(--color-brand-muted)]">{selectedIdeaBlock.summary}</p>
                 {selectedIdeaBlock.noveltyNote ? <p className="mt-3 border-l-2 border-[color:var(--color-brand-line)] pl-4 text-sm leading-7 text-[color:var(--color-brand-ink)]">{selectedIdeaBlock.noveltyNote}</p> : null}
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -2057,7 +3371,7 @@ function ProjectDetailPage() {
           </Surface>
 
           <Surface id="discussions" className="p-5">
-            <div className="text-3xl leading-none">评论</div>
+            <div className="text-3xl leading-none">{getDiscussionSectionTitle()}</div>
             <div className="mt-5 flex gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1f2430] text-lg text-white">人</div>
               <div className="min-w-0 flex-1 space-y-4">
@@ -2095,7 +3409,7 @@ function ProjectDetailPage() {
             </div>
 
             <div className="mt-8 flex items-center justify-between gap-4">
-              <div className="text-2xl">{data.discussions.length} 条精选评论</div>
+              <div className="text-2xl">{data.discussions.length} 条评论</div>
               <div className="flex overflow-hidden border border-[color:var(--color-brand-line)] text-sm">
                 <button className="bg-[#4f8de8] px-4 py-2 text-white" type="button">最新</button>
                 <button className="px-4 py-2 text-[color:var(--color-brand-muted)]" type="button">热门</button>
@@ -2118,10 +3432,13 @@ function ProjectDetailPage() {
                       {discussion.summary ? <p className="mt-3 text-base leading-7 text-[color:var(--color-brand-ink)]">{discussion.summary}</p> : null}
                       <div className="mt-4 space-y-3">
                         {discussion.comments.map((comment) => (
-                          <div key={comment.id} className="bg-black/[0.03] px-4 py-3">
-                            <div className="editorial-meta">{comment.authorName}</div>
-                            <p className="mt-2 text-sm leading-6 text-[color:var(--color-brand-muted)]">{comment.content}</p>
-                          </div>
+                          <EditableCommentCard
+                            key={comment.id}
+                            comment={comment}
+                            canEdit={canEditContent}
+                            onUpdated={handleCommentUpdated}
+                            onDeleted={handleCommentDeleted}
+                          />
                         ))}
                       </div>
                     </div>
@@ -2150,110 +3467,15 @@ function ProjectDetailPage() {
             </div>
           </Surface>
 
-          <Surface className="p-5">
-            <div className="editorial-kicker">房间状态</div>
-            <p className="mt-4 text-sm leading-7 text-[color:var(--color-brand-muted)]">
-              房间前期暂不开放。当前阶段先用评论区记录讨论和结论，后续再开放仅对已加入成员可见的聊天室。
-            </p>
-          </Surface>
         </div>
       </div>
     </div>
   );
 }
 
-function ProjectTeardownPage() {
+function ProjectTeardownRedirect() {
   const { slug = '' } = useParams();
-  const { data, loading } = useAsyncData(() => getProjectDetail(slug), [slug]);
-
-  if (loading || !data) return <LoadingState />;
-
-  return (
-    <div className="-mt-10">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
-        <div className="min-w-0 space-y-3">
-          <Surface className="p-5">
-            <Link to={`/projects/${data.slug}`} className="editorial-meta editorial-link">
-              返回作品详情
-            </Link>
-            <h1 className="mt-3 text-4xl leading-tight sm:text-5xl">{data.name} · 拆解</h1>
-            <p className="mt-4 text-base leading-7 text-[color:var(--color-brand-muted)]">{data.tagline}</p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <MetricPill label="分类" value={data.category} />
-              <MetricPill label="热度" value={data.heatScore} />
-              <MetricPill label="讨论" value={data.overview.metrics.discussionCount} />
-              <MetricPill label="点子" value={data.overview.metrics.ideaBlockCount} />
-            </div>
-            <p className="mt-5 border-t border-[color:var(--color-brand-line)] pt-4 text-sm leading-7 text-[color:var(--color-brand-muted)]">
-              拆解页保留作品基础信息和评论上下文，只把结构化研究内容单独拿出来深读。
-            </p>
-          </Surface>
-
-          <Surface className="p-5">
-            {data.teardown ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {[
-                  ['痛点摘要', data.teardown.painSummary],
-                  ['触发场景', data.teardown.triggerScene],
-                  ['核心承诺', data.teardown.corePromise],
-                  ['核心循环', data.teardown.coreLoop],
-                  ['冷启动', data.teardown.coldStartStrategy],
-                  ['变现逻辑', data.teardown.pricingLogic],
-                  ['竞争差异', data.teardown.competitorDelta],
-                  ['风险备注', data.teardown.riskNotes],
-                ].map(([label, value]) => (
-                  <div key={label} className="border border-[color:var(--color-brand-line)] p-4">
-                    <div className="editorial-meta">{label}</div>
-                    <div className="mt-3 text-sm leading-6 text-[color:var(--color-brand-muted)]">{value}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-[color:var(--color-brand-muted)]">暂无拆解。</div>
-            )}
-          </Surface>
-
-          <Surface className="p-5">
-            <div className="text-3xl leading-none">评论</div>
-            <div className="mt-6 space-y-5">
-              {data.discussions.map((discussion) => (
-                <div key={discussion.id} className="border-t border-[color:var(--color-brand-line)] pt-5 first:border-t-0 first:pt-0">
-                  <div className="flex gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#d8e4f8] text-sm text-[color:var(--color-brand-accent)]">
-                      {(discussion.createdBy || '匿').slice(0, 1)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <div className="text-lg">{discussion.createdBy || '匿名用户'}</div>
-                        <div className="text-sm text-[color:var(--color-brand-muted)]">{formatRelativeDate(discussion.lastActivityAt)}</div>
-                      </div>
-                      <div className="mt-2 text-sm text-[color:var(--color-brand-muted)]">话题：{discussion.title}</div>
-                      {discussion.summary ? <p className="mt-3 text-base leading-7 text-[color:var(--color-brand-ink)]">{discussion.summary}</p> : null}
-                      <div className="mt-4 space-y-3">
-                        {discussion.comments.map((comment) => (
-                          <div key={comment.id} className="bg-black/[0.03] px-4 py-3">
-                            <div className="editorial-meta">{comment.authorName}</div>
-                            <p className="mt-2 text-sm leading-6 text-[color:var(--color-brand-muted)]">{comment.content}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Surface>
-        </div>
-
-        <div className="space-y-3 lg:sticky lg:top-24">
-          <Surface className="p-5">
-            <div className="editorial-kicker">拆解说明</div>
-            <p className="mt-4 text-sm leading-7 text-[color:var(--color-brand-muted)]">这里保留结构化研究项，适合深读和后续扩展成更完整的研究模板。</p>
-          </Surface>
-        </div>
-      </div>
-    </div>
-  );
+  return <Navigate to={`/projects/${slug}`} replace />;
 }
 
 function AdminRoute() {
@@ -2276,9 +3498,10 @@ function AppRoutes() {
             <Route path="/" element={<HomePage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:slug" element={<ProjectDetailPage />} />
-            <Route path="/projects/:slug/teardown" element={<ProjectTeardownPage />} />
+            <Route path="/projects/:slug/teardown" element={<ProjectTeardownRedirect />} />
             <Route path="/discussions" element={<Navigate to="/projects" replace />} />
             <Route path="/idea-blocks" element={<IdeaBlocksPage />} />
+            <Route path="/idea-blocks/:slug" element={<IdeaBlockDetailPage />} />
             <Route path="/incubations" element={<IncubationsPage />} />
             <Route path="/incubations/:slug" element={<IncubationDetailPage />} />
             <Route path="/compose" element={<Navigate to="/idea-blocks" replace />} />

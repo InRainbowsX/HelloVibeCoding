@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 import { ContentStatus, CommentStatus } from '@prisma/client';
 
 export class UpdateContentStatusDto {
@@ -17,6 +17,12 @@ export class UpdateCommentStatusDto {
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+export class UpdateCommentContentDto {
+  @IsString()
+  @MinLength(1)
+  content!: string;
 }
 
 export class BatchModerateDto {
@@ -76,6 +82,34 @@ export class UpdateAppContentDto {
 
   @IsOptional()
   difficulty?: number;
+
+  @IsOptional()
+  @IsString()
+  pricing?: string;
+
+  @IsOptional()
+  @IsString({ each: true })
+  channels?: string[];
+
+  @IsOptional()
+  @IsString({ each: true })
+  trustSignals?: string[];
+
+  @IsOptional()
+  @IsString()
+  primaryUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  primaryLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  secondaryUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  secondaryLabel?: string;
 }
 
 export class UpdateDiscussionContentDto {
@@ -109,4 +143,17 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   persona?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  password?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isSimulated?: boolean;
+
+  @IsOptional()
+  @IsString()
+  role?: string;
 }

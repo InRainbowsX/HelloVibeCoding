@@ -34,6 +34,13 @@ export class AuthService {
     // 哈希密码
     const passwordHash = await bcrypt.hash(password, 10);
 
+    const adminCount = await this.prisma.user.count({
+      where: { role: 'ADMIN', isSimulated: false },
+    });
+
+    // 第一个真实注册用户自动成为管理员，作为系统 bootstrap 入口。
+    const role = adminCount === 0 ? 'ADMIN' : 'USER';
+
     // 创建用户
     const user = await this.prisma.user.create({
       data: {
@@ -41,7 +48,7 @@ export class AuthService {
         displayName: displayName || username,
         passwordHash,
         isSimulated: false,
-        role: 'USER',
+        role,
       },
       select: {
         id: true,

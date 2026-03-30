@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { login, type AuthResponse } from '../../lib/auth-api';
+import { setAuthFlashMessage } from '../../lib/auth-flash';
+import { runLoginSuccessFlow } from '../../lib/login-success';
+import { useAuth } from './AuthContext';
 
 interface LoginPageProps {
   onLogin?: (data: AuthResponse) => void;
@@ -8,6 +11,7 @@ interface LoginPageProps {
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const navigate = useNavigate();
+  const { login: syncAuthState } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,7 +30,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
     try {
       const data = await login(username, password);
-      onLogin?.(data);
+      runLoginSuccessFlow(data, {
+        syncAuthState,
+        onLogin,
+      });
+      setAuthFlashMessage(`登录成功，欢迎回来 ${data.user.displayName}`);
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败');

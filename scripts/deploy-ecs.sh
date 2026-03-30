@@ -19,6 +19,14 @@ if [[ ! -f "$DOCKER_DIR/.env.ecs" ]]; then
   exit 1
 fi
 
+required_vars=(DATABASE_URL PORT NODE_ENV VITE_API_BASE_URL ADMIN_TOKEN JWT_SECRET)
+for var_name in "${required_vars[@]}"; do
+  if ! grep -Eq "^${var_name}=.+" "$DOCKER_DIR/.env.ecs"; then
+    echo "Missing required env var in $DOCKER_DIR/.env.ecs: $var_name"
+    exit 1
+  fi
+done
+
 mkdir -p "$ROOT_DIR/uploads/screenshots"
 
 COMPOSE_FILE="$COMPOSE_HTTP"

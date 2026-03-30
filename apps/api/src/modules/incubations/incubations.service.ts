@@ -1,12 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { EngagementTargetType } from '@prisma/client';
+import { EngagementService } from '../engagement/engagement.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateIncubationDto } from './dto/create-incubation.dto';
 
 @Injectable()
 export class IncubationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly engagementService: EngagementService,
+  ) {}
 
-  async findAll(pageRaw?: string, pageSizeRaw?: string) {
+  async findAll(pageRaw?: string, pageSizeRaw?: string, viewerId?: string) {
     const page = Math.max(Number(pageRaw || 1), 1);
     const pageSize = Math.min(Math.max(Number(pageSizeRaw || 20), 1), 50);
 
@@ -29,6 +34,12 @@ export class IncubationsService {
       }),
     ]);
 
+    const states = await this.engagementService.mapStates(
+      EngagementTargetType.INCUBATION,
+      items.map((item) => item.id),
+      viewerId,
+    );
+
     return {
       items: items.map((item) => ({
         id: item.id,
@@ -41,6 +52,10 @@ export class IncubationsService {
         blockCount: item.blocks.length,
         roomCount: item.rooms.length,
         sourceProjectCount: item.sourceProjects.length,
+        likeCount: states.get(item.id)?.likeCount || 0,
+        favoriteCount: states.get(item.id)?.favoriteCount || 0,
+        viewerHasLiked: states.get(item.id)?.viewerHasLiked || false,
+        viewerHasFavorited: states.get(item.id)?.viewerHasFavorited || false,
       })),
       total,
       page,
@@ -48,7 +63,7 @@ export class IncubationsService {
     };
   }
 
-  async findOne(slug: string) {
+  async findOne(slug: string, viewerId?: string) {
     const incubation = await this.prisma.ideaIncubation.findUnique({
       where: { slug },
       include: {
@@ -85,12 +100,18 @@ export class IncubationsService {
       throw new NotFoundException(`Incubation ${slug} not found`);
     }
 
+    const state = await this.engagementService.getState(EngagementTargetType.INCUBATION, incubation.id, viewerId);
+
     return {
       id: incubation.id,
       slug: incubation.slug,
       title: incubation.title,
       oneLiner: incubation.oneLiner,
       status: incubation.status,
+      likeCount: state.likeCount,
+      favoriteCount: state.favoriteCount,
+      viewerHasLiked: state.viewerHasLiked,
+      viewerHasFavorited: state.viewerHasFavorited,
       sourceProjects: incubation.sourceProjects.map((item) => ({
         slug: item.app.slug,
         name: item.app.name,
@@ -190,5 +211,31 @@ export class IncubationsService {
       discussions: created.discussions,
       rooms: created.rooms,
     };
+  }
+
+  async toggleLike(slug: string, userId: string, active?: boolean) {
+    const incubation = await this.prisma.ideaIncubation.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+
+    if (!incubation) {
+      throw new NotFoundException(`Incubation ${slug} not found`);
+    }
+
+    return this.engagementService.toggleLike(EngagementTargetType.INCUBATION, incubation.id, userId, active);
+  }
+
+  async toggleFavorite(slug: string, userId: string, active?: boolean) {
+    const incubation = await this.prisma.ideaIncubation.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+
+    if (!incubation) {
+      throw new NotFoundException(`Incubation ${slug} not found`);
+    }
+
+    return this.engagementService.toggleFavorite(EngagementTargetType.INCUBATION, incubation.id, userId, active);
   }
 }

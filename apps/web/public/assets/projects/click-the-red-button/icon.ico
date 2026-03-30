@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Click the Red Button - Discover Random Cool Websites</title>
+    <meta name="title" content="Click the Red Button - Discover Random Cool Websites">
+    <meta name="description" content="Your gateway to the internet's coolest, weirdest, and most addictive random websites. Discover 350+ curated games, art, and fun sites with one click. Start exploring now!">
+    <meta name="keywords" content="random website, discover websites, random site generator, cool websites, fun websites, random games, internet discovery, web exploration, weird websites, addictive sites, click the red button">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+    <meta name="author" content="Click the Red Button">
+    <meta name="theme-color" content="#ef4444" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#dc2626" media="(prefers-color-scheme: dark)">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://clicktheredbutton.com/">
+    <meta property="og:title" content="Click the Red Button - Discover Random Cool Websites">
+    <meta property="og:description" content="Your gateway to the internet's coolest, weirdest, and most addictive random websites. Discover 350+ curated games, art, and fun sites with one click!">
+    <meta property="og:site_name" content="Click the Red Button">
+    <meta property="og:image" content="https://clicktheredbutton.com/og-image.png">
+    <meta property="og:image:secure_url" content="https://clicktheredbutton.com/og-image.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Click the Red Button - Discover Random Cool Websites">
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://clicktheredbutton.com/">
+    <meta name="twitter:title" content="Click the Red Button - Discover Random Cool Websites">
+    <meta name="twitter:description" content="Your gateway to the internet's coolest, weirdest, and most addictive random websites. Discover 350+ curated games, art, and fun sites with one click!">
+    <meta name="twitter:image" content="https://clicktheredbutton.com/og-image.png">
+    <meta name="twitter:image:alt" content="Click the Red Button - Discover Random Cool Websites">
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://clicktheredbutton.com/">
+    
+    <!-- Favicon & Apple Touch Icons -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-908QDPT24V"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-908QDPT24V');
+    </script>
+    
+    <!-- Preconnect for Performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://pagead2.googlesyndication.com">
+    <link rel="dns-prefetch" href="https://www.googletagmanager.com">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" as="style">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
+    
+    <!-- Google AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4375897457858236"
+     crossorigin="anonymous"></script>
+    
+    <!-- Structured Data / Schema.org -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Click the Red Button",
+      "url": "https://clicktheredbutton.com",
+      "description": "Your gateway to the internet's coolest, weirdest, and most addictive random websites. Discover 350+ curated games, art, and fun sites with one click.",
+      "applicationCategory": "EntertainmentApplication",
+      "operatingSystem": "Any",
+      "browserRequirements": "Requires JavaScript. Requires HTML5.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "1250",
+        "bestRating": "5",
+        "worstRating": "1"
+      }
+    }
+    </script>
+    
+    <!-- Organization Schema -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Click the Red Button",
+      "url": "https://clicktheredbutton.com",
+      "logo": "https://clicktheredbutton.com/favicon.png",
+      "description": "A curated collection of 350+ unique websites across games, art, and fun categories for web discovery and exploration.",
+      "foundingDate": "2025"
+    }
+    </script>
+    
+    <!-- FAQ Schema -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Click the Red Button?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Click the Red Button is a website discovery tool that takes you to random interesting websites from our curated collection of 350+ sites across games, art, and fun categories."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How many websites are in the collection?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "We currently have 350+ carefully curated websites across three categories: Games, Art, and Fun content."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is Click the Red Button free to use?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, Click the Red Button is completely free to use. Simply click the button and start discovering unique websites from across the internet."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What categories of websites can I discover?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "You can explore websites in three main categories: Games (interactive games and puzzles), Art (creative and artistic content), and Fun (entertaining and quirky websites)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Will I see the same website twice?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No, our shuffle system ensures you won't see duplicate websites within each category until you've viewed all available sites in that category."
+          }
+        }
+      ]
+    }
+    </script>
+    
+    <!-- BreadcrumbList Schema -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Home",
+          "item": "https://clicktheredbutton.com/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "About",
+          "item": "https://clicktheredbutton.com/about"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Privacy Policy",
+          "item": "https://clicktheredbutton.com/privacy"
+        },
+        {
+          "@type": "ListItem",
+          "position": 4,
+          "name": "Terms of Service",
+          "item": "https://clicktheredbutton.com/terms"
+        }
+      ]
+    }
+    </script>
+    <script type="module" crossorigin src="/assets/index-64FVzkqY.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BOQI3cWg.css">
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- Static content for search engine crawlers -->
+    <noscript>
+      <div style="font-family:sans-serif;max-width:800px;margin:0 auto;padding:24px">
+        <h1>Click the Red Button - Discover Random Cool Websites</h1>
+        <p>Your gateway to the internet's coolest, weirdest, and most addictive random websites. Discover 360+ curated games, art, and fun sites with one click. Start exploring now!</p>
+
+        <h2>How It Works</h2>
+        <p>Simply click the big red button and get instantly transported to a random website from our hand-picked collection. No algorithms, no tracking — just pure internet discovery.</p>
+
+        <h2>Browse by Category</h2>
+        <ul>
+          <li><strong>All</strong> — A surprise mix of art, fun, and games from across the web</li>
+          <li><strong>Games</strong> — Browser-based games, classic arcade titles, and fun puzzles</li>
+          <li><strong>Art</strong> — Creative tools, generative art, visual experiments, and digital galleries</li>
+          <li><strong>Fun</strong> — Weird, wonderful, and wildly entertaining corners of the internet</li>
+        </ul>
+
+        <h2>Why Click the Red Button?</h2>
+        <p>We've curated over 360 unique websites so you can rediscover how awesome the internet can be. Whether you're looking for fun sites to visit, cool random websites, weird internet stuff, or amazing websites you didn't know existed — you're in the right place.</p>
+        <p>Our shuffle system ensures you never see the same site twice within a session, and sites are pre-loaded for instant discovery with zero loading lag.</p>
+
+        <h2>Features</h2>
+        <ul>
+          <li>360+ hand-picked websites across three categories</li>
+          <li>No duplicate sites within a browsing session</li>
+          <li>Save favorites to revisit anytime</li>
+          <li>Track your browsing history</li>
+          <li>Earn achievements as you explore</li>
+          <li>Works on desktop and mobile</li>
+        </ul>
+
+        <h2>Explore the Internet</h2>
+        <p>From iconic classics to bizarre little web toys, every click is a new adventure. Dive into interactive art, classic games, creative experiments, and the internet's most unforgettable discoveries — all in one place.</p>
+
+        <nav>
+          <h2>Explore Sections</h2>
+          <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/popular-sites">Popular Sites</a></li>
+            <li><a href="/random-games">Random Games</a></li>
+            <li><a href="/random-websites">Random Websites</a></li>
+            <li><a href="/random-art">Random Art</a></li>
+            <li><a href="/about">About Click the Red Button</a></li>
+            <li><a href="/privacy">Privacy Policy</a></li>
+            <li><a href="/terms">Terms of Service</a></li>
+          </ul>
+        </nav>
+      </div>
+    </noscript>
+  </body>
+</html>

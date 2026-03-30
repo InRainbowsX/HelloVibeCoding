@@ -1,14 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, SetMetadata, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Request, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminService } from './admin.service';
 import { AdminContentService } from './admin-content.service';
 import { AdminUserService } from './admin-user.service';
 import { AdminCommentSeedService } from './admin-comment-seed.service';
-import { AdminTokenGuard, SKIP_ADMIN_TOKEN_AUTH } from './admin-token.guard';
+import { AdminTokenGuard } from './admin-token.guard';
 import { ReviewSubmissionDto } from './dto/review-submission.dto';
 import { 
   UpdateContentStatusDto, 
+  UpdateCommentContentDto,
   UpdateCommentStatusDto, 
   BatchModerateDto,
   CreateSimulatedCommentDto,
@@ -27,6 +28,14 @@ export class AdminController {
     private readonly userService: AdminUserService,
     private readonly commentSeedService: AdminCommentSeedService,
   ) {}
+
+  private getAdminId(request: { user?: { userId: string } }) {
+    if (!request.user?.userId) {
+      throw new Error('Authenticated admin user is required');
+    }
+
+    return request.user.userId;
+  }
 
   // ==================== Submissions ====================
 
@@ -113,9 +122,9 @@ export class AdminController {
   updateAppContent(
     @Param('id') id: string, 
     @Body() dto: UpdateAppContentDto,
-    @Query('adminId') adminId?: string,
+    @Request() req: { user?: { userId: string } },
   ) {
-    return this.contentService.updateAppContent(id, dto as Record<string, unknown>, adminId || 'system');
+    return this.contentService.updateAppContent(id, dto as Record<string, unknown>, this.getAdminId(req));
   }
 
   @Patch('apps/:id/teardown')
@@ -140,9 +149,9 @@ export class AdminController {
   @ApiOkResponse({ description: 'Bulk update app content status.' })
   bulkUpdateAppStatus(
     @Body() dto: BatchModerateDto,
-    @Query('adminId') adminId?: string,
+    @Request() req: { user?: { userId: string } },
   ) {
-    return this.contentService.bulkUpdateAppStatus(dto.ids, dto.status, adminId || 'system', dto.reason);
+    return this.contentService.bulkUpdateAppStatus(dto.ids, dto.status, this.getAdminId(req), dto.reason);
   }
 
   @Delete('apps/:id')
@@ -242,9 +251,9 @@ export class AdminController {
   updateDiscussionContent(
     @Param('id') id: string, 
     @Body() dto: UpdateDiscussionContentDto,
-    @Query('adminId') adminId?: string,
+    @Request() req: { user?: { userId: string } },
   ) {
-    return this.contentService.updateDiscussionContent(id, dto as Record<string, unknown>, adminId || 'system');
+    return this.contentService.updateDiscussionContent(id, dto as Record<string, unknown>, this.getAdminId(req));
   }
 
   @Delete('discussions/:id')
@@ -271,33 +280,43 @@ export class AdminController {
     });
   }
 
+  @Patch('comments/:id')
+  @ApiOkResponse({ description: 'Update comment content.' })
+  updateCommentContent(
+    @Param('id') id: string,
+    @Body() dto: UpdateCommentContentDto,
+    @Request() req: { user?: { userId: string } },
+  ) {
+    return this.contentService.updateCommentContent(id, dto.content, this.getAdminId(req));
+  }
+
   @Patch('comments/:id/status')
   @ApiOkResponse({ description: 'Update comment status.' })
   updateCommentStatus(
     @Param('id') id: string, 
     @Body() dto: UpdateCommentStatusDto,
-    @Query('adminId') adminId?: string,
+    @Request() req: { user?: { userId: string } },
   ) {
-    return this.contentService.updateCommentStatus(id, dto.status, adminId || 'system', dto.reason);
+    return this.contentService.updateCommentStatus(id, dto.status, this.getAdminId(req), dto.reason);
   }
 
   @Post('comments/bulk-status')
   @ApiOkResponse({ description: 'Bulk update comment status.' })
   bulkUpdateCommentStatus(
     @Body() dto: BatchModerateDto,
-    @Query('adminId') adminId?: string,
+    @Request() req: { user?: { userId: string } },
   ) {
-    return this.contentService.bulkUpdateCommentStatus(dto.ids, dto.status as any, adminId || 'system', dto.reason);
+    return this.contentService.bulkUpdateCommentStatus(dto.ids, dto.status as any, this.getAdminId(req), dto.reason);
   }
 
   @Delete('comments/:id')
   @ApiOkResponse({ description: 'Delete a comment.' })
   deleteComment(
     @Param('id') id: string,
-    @Query('adminId') adminId?: string,
+    @Request() req: { user?: { userId: string } },
     @Body('reason') reason?: string,
   ) {
-    return this.contentService.deleteComment(id, adminId || 'system', reason);
+    return this.contentService.deleteComment(id, this.getAdminId(req), reason);
   }
 
   // ==================== Users (New) ====================
@@ -327,10 +346,7 @@ export class AdminController {
   @Post('users')
   @ApiOkResponse({ description: 'Create a user.' })
   createUser(@Body() dto: CreateUserDto) {
-    return this.userService.createUser({
-      ...dto,
-      isSimulated: false,
-    });
+    return this.userService.createUser(dto);
   }
 
   @Patch('users/:id')
@@ -424,7 +440,6 @@ export class AdminController {
   // ==================== Uploads ====================
 
   @Post('uploads/screenshot')
-  @SetMetadata(SKIP_ADMIN_TOKEN_AUTH, true)
   @UseInterceptors(FileInterceptor('file'))
   @ApiOkResponse({ description: 'Upload and compress a screenshot to <= 100KB.' })
   uploadScreenshot(@UploadedFile() file: { buffer?: Buffer } | undefined) {

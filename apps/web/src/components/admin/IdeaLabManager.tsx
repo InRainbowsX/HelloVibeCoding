@@ -592,7 +592,7 @@ function IdeaBlockCreateModal({ onClose, onSave }: IdeaBlockCreateModalProps) {
             <label className="block text-sm font-medium mb-1">创新点说明</label>
             <textarea
               rows={2}
-              value={data.noveltyNote}
+                value={data.noveltyNote ?? ''}
               onChange={(e) => setData({ ...data, noveltyNote: e.target.value })}
               placeholder="为什么这个点子值得注意？"
               className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"

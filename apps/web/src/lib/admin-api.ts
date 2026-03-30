@@ -1,10 +1,7 @@
 // Admin API client for the management system
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-
-function getAdminToken(): string {
-  return localStorage.getItem('adminToken') || '';
-}
+import { getToken } from './auth-api';
 
 export interface ContentStats {
   apps: Record<string, number>;
@@ -103,6 +100,10 @@ export interface AppContent {
   targetPersona: string;
   hookAngle: string;
   trustSignals: string[];
+  primaryUrl?: string | null;
+  primaryLabel?: string | null;
+  secondaryUrl?: string | null;
+  secondaryLabel?: string | null;
   heatScore: number;
   difficulty: number;
   contentStatus: string;
@@ -197,10 +198,11 @@ export interface DiscussionContent {
 }
 
 async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       'Content-Type': 'application/json',
-      'X-Admin-Token': getAdminToken(),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
     ...init,
@@ -262,6 +264,12 @@ export function bulkUpdateAppStatus(ids: string[], status: string, reason?: stri
   });
 }
 
+export function deleteApp(id: string) {
+  return adminRequest<{ success: boolean }>(`/admin/apps/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 // ==================== Discussion Management ====================
 
 export function listAdminDiscussions() {
@@ -298,6 +306,13 @@ export function updateCommentStatus(id: string, status: string, reason?: string)
   return adminRequest<AdminComment>(`/admin/comments/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status, reason }),
+  });
+}
+
+export function updateCommentContent(id: string, content: string) {
+  return adminRequest<AdminComment>(`/admin/comments/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ content }),
   });
 }
 
@@ -343,6 +358,10 @@ export function createUser(data: {
   displayName: string;
   avatarUrl?: string;
   bio?: string;
+  persona?: string;
+  password?: string;
+  isSimulated?: boolean;
+  role?: string;
 }) {
   return adminRequest<AdminUser>('/admin/users', {
     method: 'POST',
@@ -411,13 +430,14 @@ export interface IdeaBlockContent {
     id: string;
     app: { id: string; name: string; slug: string };
   }>;
+  sourceAppIds?: string[];
 }
 
 export function listAdminIdeaBlocks() {
   return adminRequest<{ items: IdeaBlockContent[]; total: number }>('/admin/idea-blocks');
 }
 
-export function createIdeaBlock(data: Partial<IdeaBlockContent>) {
+export function createIdeaBlock(data: Partial<IdeaBlockContent> & { sourceAppIds?: string[] }) {
   return adminRequest<IdeaBlockContent>('/admin/idea-blocks', {
     method: 'POST',
     body: JSON.stringify(data),

@@ -231,7 +231,7 @@ export function ContentManager() {
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">作品</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">分类</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">热度</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">研究评分</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">统计</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">状态</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
@@ -260,7 +260,7 @@ export function ContentManager() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm">{app.category}</td>
-                  <td className="px-4 py-3 text-sm">{app.heatScore}</td>
+                  <td className="px-4 py-3 text-sm">{(app.heatScore / 10).toFixed(1)}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     <div className="flex gap-2">
                       <span title="讨论">💬{app.discussionCount || 0}</span>
@@ -517,13 +517,19 @@ function AppEditModal({ item, detail, activeSection, setActiveSection, onClose, 
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">热度 (0-100)</label>
+                  <label className="block text-sm font-medium mb-1">研究评分 (0-10)</label>
                   <input
                     type="number"
                     min="0"
-                    max="100"
-                    value={basicData.heatScore}
-                    onChange={(e) => setBasicData({ ...basicData, heatScore: parseInt(e.target.value) || 0 })}
+                    max="10"
+                    step="0.1"
+                    value={(basicData.heatScore / 10).toFixed(1)}
+                    onChange={(e) =>
+                      setBasicData({
+                        ...basicData,
+                        heatScore: Math.max(0, Math.min(100, Math.round((Number(e.target.value) || 0) * 10))),
+                      })
+                    }
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -560,6 +566,58 @@ function AppEditModal({ item, detail, activeSection, setActiveSection, onClose, 
                   onChange={(e) => setBasicData({ ...basicData, trustSignals: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
                   className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                <div className="mb-3">
+                  <h3 className="text-sm font-medium text-gray-900">来源入口</h3>
+                  <p className="mt-1 text-xs leading-5 text-gray-500">作品详情页会展示官网、App Store、Google Play 这类外部入口。</p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">主入口文案</label>
+                      <input
+                        type="text"
+                        value={basicData.primaryLabel || ''}
+                        onChange={(e) => setBasicData({ ...basicData, primaryLabel: e.target.value })}
+                        placeholder="例如：打开官网 / App Store"
+                        className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">主入口链接</label>
+                      <input
+                        type="url"
+                        value={basicData.primaryUrl || ''}
+                        onChange={(e) => setBasicData({ ...basicData, primaryUrl: e.target.value })}
+                        placeholder="https://"
+                        className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">第二入口文案</label>
+                      <input
+                        type="text"
+                        value={basicData.secondaryLabel || ''}
+                        onChange={(e) => setBasicData({ ...basicData, secondaryLabel: e.target.value })}
+                        placeholder="可选"
+                        className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">第二入口链接</label>
+                      <input
+                        type="url"
+                        value={basicData.secondaryUrl || ''}
+                        onChange={(e) => setBasicData({ ...basicData, secondaryUrl: e.target.value })}
+                        placeholder="https://"
+                        className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

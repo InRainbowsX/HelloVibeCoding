@@ -7,11 +7,13 @@ import {
   Lightbulb,
   LogOut
 } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
 import { AdminDashboard } from './Dashboard';
 import { ContentManager } from './ContentManager';
 import { CommentManager } from './CommentManager';
 import { UserManager } from './UserManager';
 import { IdeaLabManager } from './IdeaLabManager';
+import { useAuth } from '../auth/AuthContext';
 
 type TabType = 'dashboard' | 'content' | 'idea-lab' | 'comments' | 'users';
 
@@ -24,43 +26,23 @@ const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
 ];
 
 export function AdminPage() {
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const [token, setToken] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Simple token auth - in production this should be more secure
+  if (isLoading) {
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-sm text-gray-500">正在校验权限...</div>;
+  }
+
   if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.role !== 'ADMIN') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-sm border w-full max-w-md p-6">
-          <h1 className="text-xl font-bold text-center mb-6">管理后台登录</h1>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Admin Token</label>
-              <input
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="输入管理 Token"
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <button
-              onClick={() => {
-                // Store token and reload
-                localStorage.setItem('adminToken', token);
-                // Set the VITE_ADMIN_TOKEN for the current session
-                (window as any).VITE_ADMIN_TOKEN = token;
-                setIsAuthenticated(true);
-              }}
-              className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              登录
-            </button>
-            <p className="text-xs text-gray-500 text-center">
-              Token 存储在本地，仅用于 API 调用
-            </p>
-          </div>
+        <div className="bg-white rounded-lg shadow-sm border w-full max-w-md p-6 text-center">
+          <h1 className="text-xl font-bold mb-3">无管理权限</h1>
+          <p className="text-sm text-gray-500">当前账号已登录，但没有后台访问权限。</p>
         </div>
       </div>
     );
@@ -80,8 +62,7 @@ export function AdminPage() {
             </div>
             <button
               onClick={() => {
-                localStorage.removeItem('adminToken');
-                setIsAuthenticated(false);
+                logout();
               }}
               className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
             >

@@ -6,6 +6,7 @@ import { AppsModule } from './apps/apps.module';
 import { AuthModule } from './auth/auth.module';
 import { DigestModule } from './digest/digest.module';
 import { DiscussionsModule } from './discussions/discussions.module';
+import { EngagementModule } from './engagement/engagement.module';
 import { HealthModule } from './health/health.module';
 import { IdeaBlocksModule } from './idea-blocks/idea-blocks.module';
 import { IdeasModule } from './ideas/ideas.module';
@@ -21,6 +22,7 @@ import { SubmissionsModule } from './submissions/submissions.module';
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    EngagementModule,
     HealthModule,
     AuthModule,
     IdeasModule,

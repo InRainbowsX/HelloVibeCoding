@@ -40,6 +40,12 @@ enum RoomTargetType {
   INCUBATION
 }
 
+enum EngagementTargetType {
+  PROJECT
+  IDEA_BLOCK
+  INCUBATION
+}
+
 enum RoomStatus {
   OPEN
   FULL
@@ -88,6 +94,10 @@ model App {
   difficulty     Int            @default(1)
   heatScore      Int            @default(0)
   screenshotUrls String[]
+  primaryUrl     String?
+  primaryLabel   String?
+  secondaryUrl   String?
+  secondaryLabel String?
   contentStatus  ContentStatus  @default(PUBLISHED)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -100,7 +110,6 @@ model App {
   ideaBlockSources IdeaBlockSource[]
   incubationLinks IncubationProject[]
   rooms          Room[]
-  auditLogs      AuditLog[]
 }
 
 model Idea {
@@ -406,7 +415,28 @@ model AuditLog {
   createdAt   DateTime @default(now())
   
   admin       User     @relation(fields: [adminId], references: [id])
-  app         App?     @relation(fields: [entityId], references: [id], map: "audit_log_app_fk")
+}
+
+model ContentLike {
+  id         String               @id @default(cuid())
+  userId     String
+  targetType EngagementTargetType
+  targetId   String
+  createdAt  DateTime             @default(now())
+
+  @@unique([userId, targetType, targetId])
+  @@index([targetType, targetId])
+}
+
+model ContentFavorite {
+  id         String               @id @default(cuid())
+  userId     String
+  targetType EngagementTargetType
+  targetId   String
+  createdAt  DateTime             @default(now())
+
+  @@unique([userId, targetType, targetId])
+  @@index([targetType, targetId])
 }
 
 model Teardown {

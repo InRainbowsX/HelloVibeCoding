@@ -11,15 +11,24 @@ import { PrismaModule } from '../prisma/prisma.module';
     PrismaModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'default-jwt-secret-change-in-production',
-        signOptions: { expiresIn: '7d' },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET')?.trim();
+        const nodeEnv = configService.get<string>('NODE_ENV')?.trim();
+
+        if (!secret && nodeEnv === 'production') {
+          throw new Error('JWT_SECRET must be configured in production');
+        }
+
+        return {
+          secret: secret || 'dev-only-jwt-secret',
+          signOptions: { expiresIn: '7d' },
+        };
+      },
       inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],
-  exports: [AuthService, JwtAuthGuard],
+  exports: [AuthService, JwtAuthGuard, JwtModule],
 })
 export class AuthModule {}

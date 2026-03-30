@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 export interface CreateUserData {
   username: string;
@@ -9,6 +10,8 @@ export interface CreateUserData {
   bio?: string;
   persona?: string;
   isSimulated?: boolean;
+  password?: string;
+  role?: string;
 }
 
 export interface UpdateUserData {
@@ -16,6 +19,7 @@ export interface UpdateUserData {
   avatarUrl?: string;
   bio?: string;
   persona?: string;
+  role?: string;
 }
 
 @Injectable()
@@ -102,6 +106,23 @@ export class AdminUserService {
       throw new BadRequestException(`Username ${data.username} already exists`);
     }
 
+    const isSimulated = data.isSimulated ?? false;
+
+    if (!isSimulated && !data.password) {
+      throw new BadRequestException('Real users require a password');
+    }
+
+    if (!isSimulated && data.password && data.password.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters');
+    }
+
+    if (isSimulated && data.password) {
+      throw new BadRequestException('Simulated users cannot have a password');
+    }
+
+    const role = data.role === 'ADMIN' ? 'ADMIN' : 'USER';
+    const passwordHash = data.password ? await bcrypt.hash(data.password, 10) : null;
+
     const user = await this.prisma.user.create({
       data: {
         username: data.username,
@@ -109,7 +130,9 @@ export class AdminUserService {
         avatarUrl: data.avatarUrl,
         bio: data.bio,
         persona: data.persona,
-        isSimulated: data.isSimulated ?? false,
+        isSimulated,
+        role,
+        passwordHash,
       },
     });
 
@@ -129,6 +152,7 @@ export class AdminUserService {
         ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl || null } : {}),
         ...(data.bio !== undefined ? { bio: data.bio || null } : {}),
         ...(data.persona !== undefined ? { persona: data.persona || null } : {}),
+        ...(data.role !== undefined ? { role: data.role === 'ADMIN' ? 'ADMIN' : 'USER' } : {}),
       },
     });
 

@@ -5,15 +5,18 @@ import { AdminContentService } from './admin-content.service';
 import { AdminUserService } from './admin-user.service';
 import { AdminCommentSeedService } from './admin-comment-seed.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
+import { AdminTokenGuard } from './admin-token.guard';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AuthModule],
   controllers: [AdminController],
   providers: [
     AdminService,
     AdminContentService,
     AdminUserService,
     AdminCommentSeedService,
+    AdminTokenGuard,
   ],
   exports: [
     AdminService,
